@@ -43,7 +43,7 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
 	if (dim == 2) {
 		const int edge = 64;
 		int number_of_fields(seeds);
-		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*3.*3.)); // average grain is a disk of radius 10
+		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*2.*2.)); // average grain is a disk of radius 10
 		#ifdef MPI_VERSION
 		while (number_of_fields % np) --number_of_fields;
 		#endif
@@ -345,10 +345,7 @@ int rank = MPI::COMM_WORLD.Get_rank();
 			// compute energy change
 			double dE = 0.0;
       if(dim==2){
-        const int edge = 512;
         double film_thickness = 1.0e-6;
-        double unit_grain_boundary_area=(1.0e-3/edge)*film_thickness;// unit is m^2 for dA_hkl
-        double unit_surface_area=(1.0e-3/edge)*(1.0e-3/edge);
         double temperature=((ss->temperature_along_x))[x[0]];
 
         double h2=sin(((ss->grain_orientations)[spin2]).psi)*sin(((ss->grain_orientations)[spin2]).phi_two); 
@@ -364,7 +361,7 @@ int rank = MPI::COMM_WORLD.Get_rank();
 					  r[0] = x[0] + i;
 					  r[1] = x[1] + j;
 					  int spin = (*(ss->grid))(r)%200;
-                dE += ((spin!=spin2)-(spin!=spin1)); // grain boundary energy  
+                dE += 0.5*((spin!=spin2)-(spin!=spin1)); // grain boundary energy  
  //             std::cout<<"dE is "<<dE<<" dE is "<<dE/unit_grain_boundary_area<<"\n";
 				  }
         }
@@ -392,7 +389,7 @@ int rank = MPI::COMM_WORLD.Get_rank();
 //	      int rank = MPI::COMM_WORLD.Get_rank();
 //        if(rank==0 && dE<0) std::cout<<"dE is "<<dE<<std::endl;
       }
-//			else if (r<exp(-dE/kT)) (*(ss->grid))(x) = spin2;
+			else if (r<exp(-dE/kT)) (*(ss->grid))(x) = spin2;
 		}
 	}
 	pthread_exit(0);
