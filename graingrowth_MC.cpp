@@ -41,9 +41,9 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
 
 	unsigned long timer=0;
 	if (dim == 2) {
-		const int edge = 64;
+		const int edge = 128;
 		int number_of_fields(seeds);
-		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*2.*2.)); // average grain is a disk of radius 10
+		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*3.*3.)); // average grain is a disk of radius 10
 		#ifdef MPI_VERSION
 		while (number_of_fields % np) --number_of_fields;
 		#endif
@@ -299,7 +299,7 @@ template <int dim> void* flip_index_helper( void* s )
       hh--;
       continue; //continue the int hh loop
     }
-		int spin1 = (*(ss->grid))(x)%200;
+		int spin1 = (*(ss->grid))(x);
 		// determine neighboring spins
     vector<int> r(dim,0);
 		sparse<bool> neighbors;
@@ -308,14 +308,14 @@ template <int dim> void* flip_index_helper( void* s )
 			  for (int j=-1; j<=1; j++) {
 				  r[0] = x[0] + i;
 				  r[1] = x[1] + j;
-				  int spin = (*(ss->grid))(r)%200;
+				  int spin = (*(ss->grid))(r);
 				  set(neighbors,spin) = true;
         }
 			}
     }else if(dim==3){
 		  for (int i=-1; i<=1; i++){
 			  for (int j=-1; j<=1; j++){
-			    for (int k=-1; k<=1; k++) {
+			    for (int k=-1; k<=1; k++){
 				    r[0] = x[0] + i;
 				    r[1] = x[1] + j;
 				    r[2] = x[2] + k;
@@ -337,10 +337,10 @@ template <int dim> void* flip_index_helper( void* s )
     }
 
 		// choose a random neighbor spin
-		int spin2 = index(neighbors,rand()%length(neighbors))%200;
+		int spin2 = index(neighbors,rand()%length(neighbors));
 int rank = MPI::COMM_WORLD.Get_rank();
 		// choose a random spin from Q states
-//    int spin2 = rand()%200;
+//    int spin2 = rand();
 		if (spin1!=spin2){
 			// compute energy change
 			double dE = 0.0;
@@ -360,8 +360,8 @@ int rank = MPI::COMM_WORLD.Get_rank();
 				  for (int j=-1; j<=1; j++){
 					  r[0] = x[0] + i;
 					  r[1] = x[1] + j;
-					  int spin = (*(ss->grid))(r)%200;
-                dE += 0.5*((spin!=spin2)-(spin!=spin1)); // grain boundary energy  
+					  int spin = (*(ss->grid))(r);
+                dE += 0.5*((spin!=spin2)-(spin!=spin1))*LargeAngleGrainBoundaryEnergy(temperature); // grain boundary energy  
  //             std::cout<<"dE is "<<dE<<" dE is "<<dE/unit_grain_boundary_area<<"\n";
 				  }
         }
