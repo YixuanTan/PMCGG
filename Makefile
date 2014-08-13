@@ -57,5 +57,8 @@ mmsp2vtk: TKmmsp2vti.cpp $(core)
 mmsp2vtikeeporder: mmsp2vti_keeporder.cpp $(core)
 	$(compiler) $(flags) $< -o $@ -lz
 
+mmsp2vti200orient: mmsp2vti_200orient.cpp $(core)
+	$(compiler) $(flags) $< -o $@ -lz
+
 clean:
 	rm -rf graingrowth.out parallel_GG.out parallel_MC.out q_GG.out q_MC.out wrongendian.out

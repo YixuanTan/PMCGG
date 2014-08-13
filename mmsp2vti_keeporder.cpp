@@ -669,19 +669,19 @@ int main(int argc, char* argv[]) {
 					GRID.from_buffer(buffer);
 					for (int k = 0; k < MMSP::nodes(GRID); k++)
 //						output << colors[GRID(k)%est_grains] << " ";
-            output << GRID(k)%200 << " ";
+            output << GRID(k) << " ";
 				} else if (dim == 2) {
 					MMSP::grid<2,MMSP::scalar<int> > GRID(fields, lmin, lmax);
 					GRID.from_buffer(buffer);
 					for (int k = 0; k < MMSP::nodes(GRID); k++)
 //						output << colors[GRID(k)%est_grains] << " ";
-            output << GRID(k)%200 << " ";
+            output << GRID(k) << " ";
 				} else if (dim == 3) {
 					MMSP::grid<3,MMSP::scalar<int> > GRID(fields, lmin, lmax);
 					GRID.from_buffer(buffer);
 					for (int k = 0; k < MMSP::nodes(GRID); k++)
 //						output << colors[GRID(k)%est_grains] << " ";
-            output << GRID(k)%200 << " ";
+            output << GRID(k) << " ";
 				}
 			}
 		}

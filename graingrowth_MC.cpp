@@ -41,9 +41,9 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
 
 	unsigned long timer=0;
 	if (dim == 2) {
-		const int edge = 128;
+		const int edge = 512;
 		int number_of_fields(seeds);
-		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*3.*3.)); // average grain is a disk of radius 10
+		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*20.*20.)); // average grain is a disk of radius 10
 		#ifdef MPI_VERSION
 		while (number_of_fields % np) --number_of_fields;
 		#endif
@@ -299,7 +299,7 @@ template <int dim> void* flip_index_helper( void* s )
       hh--;
       continue; //continue the int hh loop
     }
-		int spin1 = (*(ss->grid))(x);
+		int spin1 = (*(ss->grid))(x)%200;
 		// determine neighboring spins
     vector<int> r(dim,0);
 		sparse<bool> neighbors;
@@ -308,7 +308,7 @@ template <int dim> void* flip_index_helper( void* s )
 			  for (int j=-1; j<=1; j++) {
 				  r[0] = x[0] + i;
 				  r[1] = x[1] + j;
-				  int spin = (*(ss->grid))(r);
+				  int spin = (*(ss->grid))(r)%200;
 				  set(neighbors,spin) = true;
         }
 			}
@@ -337,7 +337,7 @@ template <int dim> void* flip_index_helper( void* s )
     }
 
 		// choose a random neighbor spin
-		int spin2 = index(neighbors,rand()%length(neighbors));
+		int spin2 = index(neighbors,rand()%length(neighbors))%200;
 int rank = MPI::COMM_WORLD.Get_rank();
 		// choose a random spin from Q states
 //    int spin2 = rand();
@@ -360,12 +360,231 @@ int rank = MPI::COMM_WORLD.Get_rank();
 				  for (int j=-1; j<=1; j++){
 					  r[0] = x[0] + i;
 					  r[1] = x[1] + j;
-					  int spin = (*(ss->grid))(r);
-                dE += 0.5*((spin!=spin2)-(spin!=spin1))*LargeAngleGrainBoundaryEnergy(temperature); // grain boundary energy  
- //             std::cout<<"dE is "<<dE<<" dE is "<<dE/unit_grain_boundary_area<<"\n";
+					  int spin = (*(ss->grid))(r)%200;
+ //         std::cout<<"dE is "<<dE<<" dE is "<<dE/unit_grain_boundary_area<<"\n";
+
+              bool incoherent_twin_boundary = false, coherent_twin_boundary = false;
+              double max,medium,min;
+              //check with index before
+              double h=sin(((ss->grain_orientations)[spin]).psi)*sin(((ss->grain_orientations)[spin]).phi_two);  
+              double k=sin(((ss->grain_orientations)[spin]).psi)*cos(((ss->grain_orientations)[spin]).phi_two);  
+              double l=cos(((ss->grain_orientations)[spin]).psi);
+              double cosine_normal_directions_one=fabs(h*h1+k*k1+l*l1)/sqrt(h*h+k*k+l*l)/sqrt(h1*h1+k1*k1+l1*l1);
+              double cosine_normal_directions_two=fabs(h*h2+k*k2+l*l2)/sqrt(h*h+k*k+l*l)/sqrt(h2*h2+k2*k2+l2*l2);
+         //         std::cout<<h1<<" "<<k1<<" "<<l1<<std::endl;
+              if(fabs(cosine_normal_directions_one-0.816)<rotation_tolerance){
+                //if incoherent twin
+                max=MaxOfThreeNumber(h,k,l);
+                medium=MediumOfThreeNumber(h,k,l);
+                min=MinOfThreeNumber(h,k,l);
+                double cosine_nd_trione=fabs((-max+medium+min))/sqrt(3.0)/sqrt(max*max+medium*medium+min*min);//<111> w.r.t NDs
+                if(cosine_nd_trione<rotation_tolerance){
+                  max=MaxOfThreeNumber(h1,k1,l1);
+                  medium=MediumOfThreeNumber(h1,k1,l1);
+                  min=MinOfThreeNumber(h1,k1,l1);
+                  cosine_nd_trione=fabs((-max+medium+min))/sqrt(3.0)/sqrt(max*max+medium*medium+min*min);
+ //                 std::cout<<"cosine_nd_trione is "<<cosine_nd_trione<<" "<<h1<<" "<<k1<<" "<<l1<<std::endl;
+                  if(cosine_nd_trione<rotation_tolerance){
+                    incoherent_twin_boundary=true;
+                  }
+                }
+                if(i==0){//i=0 j!=0   x[0] along rolling direction
+                  double transverse_direction[3];
+                  //check self
+                  transverse_direction[0]=sin(((ss->grain_orientations)[spin1]).phi_one)*cos(((ss->grain_orientations)[spin1]).phi_two)
+                                         +cos(((ss->grain_orientations)[spin1]).phi_one)*sin(((ss->grain_orientations)[spin1]).phi_two)
+                                          *cos(((ss->grain_orientations)[spin1]).psi);  
+                  transverse_direction[1]=-sin(((ss->grain_orientations)[spin1]).phi_one)*sin(((ss->grain_orientations)[spin1]).phi_two)
+                                         +cos(((ss->grain_orientations)[spin1]).phi_one)*cos(((ss->grain_orientations)[spin1]).phi_two)
+                                          *cos(((ss->grain_orientations)[spin1]).psi);  
+                  transverse_direction[2]=-cos(((ss->grain_orientations)[spin1]).phi_one)*sin(((ss->grain_orientations)[spin1]).psi); 
+                  transverse_direction[0]=fabs(transverse_direction[0]);
+                  transverse_direction[1]=fabs(transverse_direction[1]);
+                  transverse_direction[2]=fabs(transverse_direction[2]);
+                  max=MaxOfThreeNumber(transverse_direction[0],transverse_direction[1],transverse_direction[2]);
+                  medium=MediumOfThreeNumber(transverse_direction[0],transverse_direction[1],transverse_direction[2]);
+                  min=MinOfThreeNumber(transverse_direction[0],transverse_direction[1],transverse_direction[2]);
+                  double cosine_td_trione=fabs((-max+medium+min))/sqrt(3.0)/sqrt(max*max+medium*medium+min*min);
+                  //if coheret twin
+                  //check neighbour
+                  if(cosine_td_trione>cos_tolerance){
+                    transverse_direction[0]=sin(((ss->grain_orientations)[spin]).phi_one)*cos(((ss->grain_orientations)[spin]).phi_two)
+                                           +cos(((ss->grain_orientations)[spin]).phi_one)*sin(((ss->grain_orientations)[spin]).phi_two)
+                                            *cos(((ss->grain_orientations)[spin]).psi);  
+                    transverse_direction[1]=-sin(((ss->grain_orientations)[spin]).phi_one)*sin(((ss->grain_orientations)[spin]).phi_two)
+                                           +cos(((ss->grain_orientations)[spin]).phi_one)*cos(((ss->grain_orientations)[spin]).phi_two)
+                                            *cos(((ss->grain_orientations)[spin]).psi);  
+                    transverse_direction[2]=-cos(((ss->grain_orientations)[spin]).phi_one)*sin(((ss->grain_orientations)[spin]).psi); 
+                    transverse_direction[0]=fabs(transverse_direction[0]);
+                    transverse_direction[1]=fabs(transverse_direction[1]);
+                    transverse_direction[2]=fabs(transverse_direction[2]);
+                    max=MaxOfThreeNumber(transverse_direction[0],transverse_direction[1],transverse_direction[2]);
+                    medium=MediumOfThreeNumber(transverse_direction[0],transverse_direction[1],transverse_direction[2]);
+                    min=MinOfThreeNumber(transverse_direction[0],transverse_direction[1],transverse_direction[2]);
+                    cosine_td_trione=fabs((-max+medium+min))/sqrt(3.0)/sqrt(max*max+medium*medium+min*min);
+                    if(cosine_td_trione>cos_tolerance){
+                      incoherent_twin_boundary = false;
+                      coherent_twin_boundary = true;
+                      dE += -0.5*film_thickness*CoherentTwinBoundaryEnergy(temperature);
+                    }
+                  }
+                }else{// i!=0 j=0  x[1] along rolling direction
+                  double rolling_direction[3];
+                  double cosine_rd_trione;
+                  //check self
+                  rolling_direction[0]=cos(((ss->grain_orientations)[spin1]).phi_one)*cos(((ss->grain_orientations)[spin1]).phi_two)
+                                      -sin(((ss->grain_orientations)[spin1]).phi_one)*sin(((ss->grain_orientations)[spin1]).phi_two)
+                                       *cos(((ss->grain_orientations)[spin1]).psi);  
+                  rolling_direction[1]=-cos(((ss->grain_orientations)[spin1]).phi_one)*sin(((ss->grain_orientations)[spin1]).phi_two)
+                                      -sin(((ss->grain_orientations)[spin1]).phi_one)*cos(((ss->grain_orientations)[spin1]).phi_two)
+                                       *cos(((ss->grain_orientations)[spin1]).psi); 
+                  rolling_direction[2]=sin(((ss->grain_orientations)[spin1]).phi_one)*sin(((ss->grain_orientations)[spin1]).psi); 
+                  rolling_direction[0]=fabs(rolling_direction[0]);
+                  rolling_direction[1]=fabs(rolling_direction[1]);
+                  rolling_direction[2]=fabs(rolling_direction[2]);
+                  double max=MaxOfThreeNumber(rolling_direction[0],rolling_direction[1],rolling_direction[2]);
+                  double medium=MediumOfThreeNumber(rolling_direction[0],rolling_direction[1],rolling_direction[2]);
+                  double min=MinOfThreeNumber(rolling_direction[0],rolling_direction[1],rolling_direction[2]);
+                  cosine_rd_trione=fabs((-max+medium+min))/sqrt(3.0)/sqrt(max*max+medium*medium+min*min);
+                  //check neighbour
+                  if(cosine_rd_trione>cos_tolerance){
+                    rolling_direction[0]=cos(((ss->grain_orientations)[spin1]).phi_one)*cos(((ss->grain_orientations)[spin1]).phi_two)
+                                        -sin(((ss->grain_orientations)[spin1]).phi_one)*sin(((ss->grain_orientations)[spin1]).phi_two)
+                                         *cos(((ss->grain_orientations)[spin1]).psi);  
+                    rolling_direction[1]=-cos(((ss->grain_orientations)[spin1]).phi_one)*sin(((ss->grain_orientations)[spin1]).phi_two)
+                                        -sin(((ss->grain_orientations)[spin1]).phi_one)*cos(((ss->grain_orientations)[spin1]).phi_two)
+                                         *cos(((ss->grain_orientations)[spin1]).psi); 
+                    rolling_direction[2]=sin(((ss->grain_orientations)[spin1]).phi_one)*sin(((ss->grain_orientations)[spin1]).psi); 
+                    rolling_direction[0]=fabs(rolling_direction[0]);
+                    rolling_direction[1]=fabs(rolling_direction[1]);
+                    rolling_direction[2]=fabs(rolling_direction[2]);
+                    max=MaxOfThreeNumber(rolling_direction[0],rolling_direction[1],rolling_direction[2]);
+                    medium=MediumOfThreeNumber(rolling_direction[0],rolling_direction[1],rolling_direction[2]);
+                    min=MinOfThreeNumber(rolling_direction[0],rolling_direction[1],rolling_direction[2]);
+                    cosine_rd_trione=fabs((-max+medium+min))/sqrt(3.0)/sqrt(max*max+medium*medium+min*min);
+                    cosine_rd_trione=fabs((-max+medium+min))/sqrt(3.0)/sqrt(max*max+medium*medium+min*min);
+                    if(cosine_rd_trione>cos_tolerance){
+                      incoherent_twin_boundary = false;
+                      coherent_twin_boundary = true;
+                      dE += -0.5*film_thickness*CoherentTwinBoundaryEnergy(temperature);
+                    }
+                  }
+                }
+              }
+              if(incoherent_twin_boundary == true){
+                dE += -0.5*film_thickness*IncoherentTwinBoundaryEnergy(temperature);
+              }
+              else if(incoherent_twin_boundary == false && coherent_twin_boundary == false){
+                dE += -0.5*(spin!=spin1)*film_thickness*LargeAngleGrainBoundaryEnergy(temperature); // grain boundary energy  
+             } 
+              //check with index after flip
+              incoherent_twin_boundary = false;
+              coherent_twin_boundary = false;
+              if(fabs(cosine_normal_directions_two-0.816)<rotation_tolerance){//60 deg rotation from ND to ND
+                //if incoherent twin
+                max=MaxOfThreeNumber(h,k,l);
+                medium=MediumOfThreeNumber(h,k,l);
+                min=MinOfThreeNumber(h,k,l);
+                double cosine_nd_trione=fabs((-max+medium+min))/sqrt(3.0)/sqrt(max*max+medium*medium+min*min);//<111> w.r.t NDs
+                if(cosine_nd_trione<rotation_tolerance){
+                  max=MaxOfThreeNumber(h2,k2,l2);
+                  medium=MediumOfThreeNumber(h2,k2,l2);
+                  min=MinOfThreeNumber(h2,k2,l2);
+                  cosine_nd_trione=fabs((-max+medium+min))/sqrt(3.0)/sqrt(max*max+medium*medium+min*min);
+                  if(cosine_nd_trione<rotation_tolerance){
+                    incoherent_twin_boundary=true;
+                  }
+                }
+                if(i==0){//i=0 j!=0   x[0] along rolling direction
+                  double transverse_direction[3];
+                  //check self
+                  transverse_direction[0]=sin(((ss->grain_orientations)[spin2]).phi_one)*cos(((ss->grain_orientations)[spin2]).phi_two)
+                                         +cos(((ss->grain_orientations)[spin2]).phi_one)*sin(((ss->grain_orientations)[spin2]).phi_two)
+                                          *cos(((ss->grain_orientations)[spin2]).psi);  
+                  transverse_direction[1]=-sin(((ss->grain_orientations)[spin2]).phi_one)*sin(((ss->grain_orientations)[spin2]).phi_two)
+                                         +cos(((ss->grain_orientations)[spin2]).phi_one)*cos(((ss->grain_orientations)[spin2]).phi_two)
+                                          *cos(((ss->grain_orientations)[spin2]).psi);  
+                  transverse_direction[2]=-cos(((ss->grain_orientations)[spin2]).phi_one)*sin(((ss->grain_orientations)[spin2]).psi); 
+                  transverse_direction[0]=fabs(transverse_direction[0]);
+                  transverse_direction[1]=fabs(transverse_direction[1]);
+                  transverse_direction[2]=fabs(transverse_direction[2]);
+                  max=MaxOfThreeNumber(transverse_direction[0],transverse_direction[1],transverse_direction[2]);
+                  medium=MediumOfThreeNumber(transverse_direction[0],transverse_direction[1],transverse_direction[2]);
+                  min=MinOfThreeNumber(transverse_direction[0],transverse_direction[1],transverse_direction[2]);
+                  double cosine_td_trione=fabs((-max+medium+min))/sqrt(3.0)/sqrt(max*max+medium*medium+min*min);
+                  //check neighbour
+                  if(cosine_td_trione>cos_tolerance){
+                    transverse_direction[0]=sin(((ss->grain_orientations)[spin]).phi_one)*cos(((ss->grain_orientations)[spin]).phi_two)
+                                           +cos(((ss->grain_orientations)[spin]).phi_one)*sin(((ss->grain_orientations)[spin]).phi_two)
+                                            *cos(((ss->grain_orientations)[spin]).psi);  
+                    transverse_direction[1]=-sin(((ss->grain_orientations)[spin]).phi_one)*sin(((ss->grain_orientations)[spin]).phi_two)
+                                           +cos(((ss->grain_orientations)[spin]).phi_one)*cos(((ss->grain_orientations)[spin]).phi_two)
+                                            *cos(((ss->grain_orientations)[spin]).psi);  
+                    transverse_direction[2]=-cos(((ss->grain_orientations)[spin]).phi_one)*sin(((ss->grain_orientations)[spin]).psi); 
+                    transverse_direction[0]=fabs(transverse_direction[0]);
+                    transverse_direction[1]=fabs(transverse_direction[1]);
+                    transverse_direction[2]=fabs(transverse_direction[2]);
+                    max=MaxOfThreeNumber(transverse_direction[0],transverse_direction[1],transverse_direction[2]);
+                    medium=MediumOfThreeNumber(transverse_direction[0],transverse_direction[1],transverse_direction[2]);
+                    min=MinOfThreeNumber(transverse_direction[0],transverse_direction[1],transverse_direction[2]);
+                    cosine_td_trione=fabs((-max+medium+min))/sqrt(3.0)/sqrt(max*max+medium*medium+min*min);
+                    if(cosine_td_trione>cos_tolerance){
+                      incoherent_twin_boundary = false;
+                      coherent_twin_boundary = true;
+                      dE += 0.5*film_thickness*CoherentTwinBoundaryEnergy(temperature);
+                    }
+                  }
+                }else{// i!=0 j=0  x[1] along rolling direction
+                  double rolling_direction[3];
+                  double cosine_rd_trione;
+                  //check self
+                  rolling_direction[0]=cos(((ss->grain_orientations)[spin2]).phi_one)*cos(((ss->grain_orientations)[spin2]).phi_two)
+                                      -sin(((ss->grain_orientations)[spin2]).phi_one)*sin(((ss->grain_orientations)[spin2]).phi_two)
+                                       *cos(((ss->grain_orientations)[spin2]).psi);  
+                  rolling_direction[1]=-cos(((ss->grain_orientations)[spin2]).phi_one)*sin(((ss->grain_orientations)[spin2]).phi_two)
+                                      -sin(((ss->grain_orientations)[spin2]).phi_one)*cos(((ss->grain_orientations)[spin2]).phi_two)
+                                       *cos(((ss->grain_orientations)[spin2]).psi); 
+                  rolling_direction[2]=sin(((ss->grain_orientations)[spin2]).phi_one)*sin(((ss->grain_orientations)[spin2]).psi); 
+                  rolling_direction[0]=fabs(rolling_direction[0]);
+                  rolling_direction[1]=fabs(rolling_direction[1]);
+                  rolling_direction[2]=fabs(rolling_direction[2]);
+                  double max=MaxOfThreeNumber(rolling_direction[0],rolling_direction[1],rolling_direction[2]);
+                  double medium=MediumOfThreeNumber(rolling_direction[0],rolling_direction[1],rolling_direction[2]);
+                  double min=MinOfThreeNumber(rolling_direction[0],rolling_direction[1],rolling_direction[2]);
+                  cosine_rd_trione=fabs((-max+medium+min))/sqrt(3.0)/sqrt(max*max+medium*medium+min*min);
+                  //check neighbour
+                  if(cosine_rd_trione>cos_tolerance){
+                    rolling_direction[0]=cos(((ss->grain_orientations)[spin2]).phi_one)*cos(((ss->grain_orientations)[spin2]).phi_two)
+                                        -sin(((ss->grain_orientations)[spin2]).phi_one)*sin(((ss->grain_orientations)[spin2]).phi_two)
+                                         *cos(((ss->grain_orientations)[spin2]).psi);  
+                    rolling_direction[1]=-cos(((ss->grain_orientations)[spin2]).phi_one)*sin(((ss->grain_orientations)[spin2]).phi_two)
+                                        -sin(((ss->grain_orientations)[spin2]).phi_one)*cos(((ss->grain_orientations)[spin2]).phi_two)
+                                         *cos(((ss->grain_orientations)[spin2]).psi); 
+                    rolling_direction[2]=sin(((ss->grain_orientations)[spin2]).phi_one)*sin(((ss->grain_orientations)[spin2]).psi); 
+                    rolling_direction[0]=fabs(rolling_direction[0]);
+                    rolling_direction[1]=fabs(rolling_direction[1]);
+                    rolling_direction[2]=fabs(rolling_direction[2]);
+                    max=MaxOfThreeNumber(rolling_direction[0],rolling_direction[1],rolling_direction[2]);
+                    medium=MediumOfThreeNumber(rolling_direction[0],rolling_direction[1],rolling_direction[2]);
+                    min=MinOfThreeNumber(rolling_direction[0],rolling_direction[1],rolling_direction[2]);
+                    cosine_rd_trione=fabs((-max+medium+min))/sqrt(3.0)/sqrt(max*max+medium*medium+min*min);
+                    cosine_rd_trione=fabs((-max+medium+min))/sqrt(3.0)/sqrt(max*max+medium*medium+min*min);
+                    if(cosine_rd_trione>cos_tolerance){
+                      incoherent_twin_boundary = false;
+                      coherent_twin_boundary = true;
+                      dE += 0.5*film_thickness*CoherentTwinBoundaryEnergy(temperature);
+                    }
+                  }
+                }
+              }
+              if(incoherent_twin_boundary == true){
+                dE += 0.5*film_thickness*IncoherentTwinBoundaryEnergy(temperature);
+              }
+              else if(incoherent_twin_boundary == false && coherent_twin_boundary == false){
+                dE += 0.5*(spin!=spin2)*film_thickness*LargeAngleGrainBoundaryEnergy(temperature); // grain boundary energy  
+              }
 				  }
         }
-//        if(rank==0 && dE<0) std::cout<<"dE is "<<dE<<std::endl;
       }
       if(dim==3){
 			  for (int i=-1; i<=1; i++){ 
@@ -642,7 +861,6 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 				mat_para[i].num_of_points_to_flip=num_of_grids_to_flip[i][sublattice];
         for(int k=0; k<dim; k++) mat_para[i].cell_coord[k]=cell_coord[i][k];
 				pthread_create(&p_threads[i], &attr, flip_index_helper<dim>, (void*) &mat_para[i] );
-
 			}//loop over threads
 
 			for (int ii=0; ii!= nthreads ; ii++)
@@ -682,7 +900,6 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 	p_threads=NULL;
 	delete [] mat_para;
 	mat_para=NULL;
-
 
 	unsigned long total_update_time=update_timer;
 	#ifdef MPI_VERSION
