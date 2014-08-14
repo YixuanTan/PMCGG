@@ -41,9 +41,9 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
 
 	unsigned long timer=0;
 	if (dim == 2) {
-		const int edge = 512;
+		const int edge = 64;
 		int number_of_fields(seeds);
-		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*20.*20.)); // average grain is a disk of radius 10
+		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*1.5*1.5)); // average grain is a disk of radius 10
 		#ifdef MPI_VERSION
 		while (number_of_fields % np) --number_of_fields;
 		#endif
@@ -290,7 +290,8 @@ template <int dim> void* flip_index_helper( void* s )
     }
     bool site_out_of_domain = false;
     for(int i=0; i<dim; i++){
-      if(x[i]<x0(*(ss->grid), i) || x[i]>x1(*(ss->grid), i)){
+//      if(x[i]<x0(*(ss->grid), i) || x[i]>x1(*(ss->grid), i)){
+      if(x[i]<x0(*(ss->grid), i) || x[i]>x1(*(ss->grid), i)-1){
         site_out_of_domain = true;
         break;//break from the for int i loop
       }
@@ -299,17 +300,29 @@ template <int dim> void* flip_index_helper( void* s )
       hh--;
       continue; //continue the int hh loop
     }
+int rank = MPI::COMM_WORLD.Get_rank();
 		int spin1 = (*(ss->grid))(x)%200;
 		// determine neighboring spins
     vector<int> r(dim,0);
-		sparse<bool> neighbors;
+    std::vector<int> neighbors;
+    neighbors.clear();
     if(dim==2){
 		  for (int i=-1; i<=1; i++) {
 			  for (int j=-1; j<=1; j++) {
 				  r[0] = x[0] + i;
 				  r[1] = x[1] + j;
+/*
+          for(int ii=0; ii<dim; ii++){
+            if(r[ii]<g0(*(ss->grid), i)) r[ii]=g1(*(ss->grid), ii);
+            if(r[ii]>g1(*(ss->grid), i)) r[ii]=g0(*(ss->grid), ii);
+          }
+*/
 				  int spin = (*(ss->grid))(r)%200;
-				  set(neighbors,spin) = true;
+//          if(rank==0)
+//            std::cout<<"spin is "<<spin<<" r[0]: "<<r[0]<<"  r[1]: "<<r[1]<<std::endl;
+          if(!(i==0 && j==0)){
+				    neighbors.push_back(spin);
+          }
         }
 			}
     }else if(dim==3){
@@ -320,7 +333,8 @@ template <int dim> void* flip_index_helper( void* s )
 				    r[1] = x[1] + j;
 				    r[2] = x[2] + k;
 				    int spin = (*(ss->grid))(r);
-				    set(neighbors,spin) = true;
+            if(!(i==0 && j==0 && k==0))
+				      neighbors.push_back(spin);
 			    }
         }
 		  }
@@ -328,19 +342,18 @@ template <int dim> void* flip_index_helper( void* s )
 
     //check if inside a grain
     int number_of_same_neighours = 0;
-    for(int j=0; j<length(neighbors)-1; j++){
-		  if(index(neighbors,j)!=index(neighbors,j+1)) break; //not inside a grain, break from for int j
+    for(int j=0; j<neighbors.size(); j++){
+		  if(neighbors[j]!=spin1) break; //not inside a grain, break from for int j
       number_of_same_neighours++;
     }
-    if(number_of_same_neighours==length(neighbors)-1){//inside a grain
+    if(number_of_same_neighours==neighbors.size()){//inside a grain
       continue;//continue for 
     }
 
 		// choose a random neighbor spin
-		int spin2 = index(neighbors,rand()%length(neighbors))%200;
-int rank = MPI::COMM_WORLD.Get_rank();
+//		int spin2 = neighbors[rand()%neighbors.size()]%200;
 		// choose a random spin from Q states
-//    int spin2 = rand();
+    int spin2 = rand()%200;
 		if (spin1!=spin2){
 			// compute energy change
 			double dE = 0.0;
@@ -354,13 +367,14 @@ int rank = MPI::COMM_WORLD.Get_rank();
         double h1=sin(((ss->grain_orientations)[spin1]).psi)*sin(((ss->grain_orientations)[spin1]).phi_two);   
         double k1=sin(((ss->grain_orientations)[spin1]).psi)*cos(((ss->grain_orientations)[spin1]).phi_two);  
         double l1=cos(((ss->grain_orientations)[spin1]).psi);
-//	  	  dE += 2*( SurfaceEnergy(h2, k2, l2, temperature)-SurfaceEnergy(h1, k1, l1, temperature)) //surface and interface energy
-//            + film_thickness*(StrainEnergyDenstiy(h2, k2, l2, temperature)-StrainEnergyDenstiy(h1, k1, l1, temperature));//elastic strain energy
+//	  	  dE += 2*( SurfaceEnergy(h2, k2, l2, temperature)-SurfaceEnergy(h1, k1, l1, temperature)); //surface and interface energy
+ //           + film_thickness*(StrainEnergyDenstiy(h2, k2, l2, temperature)-StrainEnergyDenstiy(h1, k1, l1, temperature));//elastic strain energy
 			  for (int i=-1; i<=1; i++){
 				  for (int j=-1; j<=1; j++){
 					  r[0] = x[0] + i;
 					  r[1] = x[1] + j;
 					  int spin = (*(ss->grid))(r)%200;
+
  //         std::cout<<"dE is "<<dE<<" dE is "<<dE/unit_grain_boundary_area<<"\n";
 
               bool incoherent_twin_boundary = false, coherent_twin_boundary = false;
@@ -476,7 +490,7 @@ int rank = MPI::COMM_WORLD.Get_rank();
               }
               else if(incoherent_twin_boundary == false && coherent_twin_boundary == false){
                 dE += -0.5*(spin!=spin1)*film_thickness*LargeAngleGrainBoundaryEnergy(temperature); // grain boundary energy  
-             } 
+              } 
               //check with index after flip
               incoherent_twin_boundary = false;
               coherent_twin_boundary = false;
@@ -582,7 +596,7 @@ int rank = MPI::COMM_WORLD.Get_rank();
               }
               else if(incoherent_twin_boundary == false && coherent_twin_boundary == false){
                 dE += 0.5*(spin!=spin2)*film_thickness*LargeAngleGrainBoundaryEnergy(temperature); // grain boundary energy  
-              }
+		}
 				  }
         }
       }
@@ -608,7 +622,7 @@ int rank = MPI::COMM_WORLD.Get_rank();
 //	      int rank = MPI::COMM_WORLD.Get_rank();
 //        if(rank==0 && dE<0) std::cout<<"dE is "<<dE<<std::endl;
       }
-			else if (r<exp(-dE/kT)) (*(ss->grid))(x) = spin2;
+  			else if (r<exp(-dE/kT)) (*(ss->grid))(x) = spin2;
 		}
 	}
 	pthread_exit(0);
@@ -618,7 +632,8 @@ int rank = MPI::COMM_WORLD.Get_rank();
 template <int dim> bool OutsideDomainCheck(MMSP::grid<dim, int>& grid, vector<int>* x){
   bool outside_domain=false;
   for(int i=0; i<dim; i++){
-    if((*x)[i]<x0(grid, i) || (*x)[i]>x1(grid, i)){
+//    if((*x)[i]<x0(grid, i) || (*x)[i]>x1(grid, i)){
+    if((*x)[i]<x0(grid, i) || (*x)[i]>x1(grid, i)-1){
       outside_domain=true;
       break;
     }
@@ -649,7 +664,6 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 
 	rank=MPI::COMM_WORLD.Get_rank();
 	np=MPI::COMM_WORLD.Get_size();
-
 	MPI::COMM_WORLD.Barrier();
 //	#endif
 
@@ -664,20 +678,43 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 	static int iterations = 1;
 	if (rank==0) print_progress(0, steps, iterations);
 	#endif
-
+	ghostswap(grid); 
+/*
+  int edge = 512;
+  int number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*10.*10.)); // average grain is a disk of radius 10
+  #ifdef MPI_VERSION
+	while (number_of_fields % np) --number_of_fields;
+  #endif
+*/
   EulerAngles *grain_orientations = new EulerAngles[200];
+
+  /*
+  if(rank==0){
+    vector<int> rr(dim,0);
+    rr[dim-2]=2;
+    rr[dim-1]=254;
+    std::cout<<"(2, 254) is "<<grid(rr)<<std::endl;
+    rr[dim-2]=2;
+    rr[dim-1]=255;
+    std::cout<<"(2, 255) is "<<grid(rr)<<std::endl;
+    rr[dim-2]=2;
+    rr[dim-1]=256;
+    std::cout<<"(2, 256) is "<<grid(rr)<<std::endl;
+  }
+  if(rank==1){
+    vector<int> rr(dim,0);
+    rr[dim-2]=2;
+    rr[dim-1]=255;
+    std::cout<<"(2, 255) is "<<grid(rr)<<std::endl;
+    rr[dim-2]=2;
+    rr[dim-1]=256;
+    std::cout<<"(2, 256) is "<<grid(rr)<<std::endl;
+    rr[dim-2]=2;
+    rr[dim-1]=257;
+    std::cout<<"(2, 257) is "<<grid(rr)<<std::endl;
+  }*/
   if(rank==0){
     ReadData(grain_orientations);
-/*    double phi, phi_two;
-    for(int i=0; i<200; i++){
-      psi=grain_orientations[i].k;
-      phi_two=grain_orientations[i].l;
-
-      h=sin(grain_orientations[i].psi)*sin(grain_orientations[i].phi_two);
-      k=sin(grain_orientations[i].psi)*cos(grain_orientations[i].phi_two);
-      l=cos(grain_orientations[i].psi);
-//    std::cout<<grain_orientations[i].h<<" "<<grain_orientations[i].k<<" "<<grain_orientations[i].l<<std::endl;
-    }*/
   }
 	MPI::COMM_WORLD.Barrier();
   MPI::COMM_WORLD.Bcast(grain_orientations, 200*3, MPI_DOUBLE, 0);
@@ -688,7 +725,8 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
   int dimension_length=0, number_of_lattice_cells=1;
   int lattice_cells_each_dimension[dim];
   for(int i=0; i<dim; i++){
-    dimension_length = x1(grid, i)-x0(grid, i);
+//    dimension_length = x1(grid, i)-x0(grid, i);
+    dimension_length = x1(grid, i)-1-x0(grid, i);
     if(x0(grid, 0)%2==0)
       lattice_cells_each_dimension[i] = dimension_length/2+1;
     else
@@ -849,7 +887,6 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
       }
     }// for int j 
   }//for int i
-
 	for (int step=0; step<steps; step++){
 		unsigned long start = rdtsc();
     int num_of_sublattices=0;
