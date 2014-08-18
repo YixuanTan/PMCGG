@@ -1467,6 +1467,12 @@ public:
 	friend int sp(const grid& GRID, int i) {
 		return GRID.sp[i];
 	}
+	friend int s0(const grid& GRID, int i) {
+		return GRID.s0[i];
+	}
+	friend int s1(const grid& GRID, int i) {
+		return GRID.s1[i];
+	}
 
 	// grid utility functions (x direction)
 	friend int x0(const grid& GRID) {

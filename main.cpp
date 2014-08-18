@@ -489,7 +489,7 @@ int main(int argc, char* argv[]) {
     steps = atoi(argv[2]);
     increment = atoi(argv[3]);
 		nthreads = atoi(argv[4]);
-/*
+
 		if (std::string(argv[2]).find_first_not_of("0123456789") == std::string::npos) {
 			// set output file name
 			outfile = argv[1];
@@ -563,7 +563,6 @@ int main(int argc, char* argv[]) {
 
 			}
 		}
-*/
 
 
 		// file open error check

@@ -231,7 +231,7 @@ template <int dim> void* flip_index_helper( void* s )
       }
     }
     if(site_out_of_domain == true){
-//      hh--;
+      hh--;
       continue; //continue the int hh loop
     }
 		int spin1 = (*(ss->grid))(x);
