@@ -359,7 +359,7 @@ int rank = MPI::COMM_WORLD.Get_rank();
         double h1=sin(((ss->grain_orientations)[spin1]).psi)*sin(((ss->grain_orientations)[spin1]).phi_two);   
         double k1=sin(((ss->grain_orientations)[spin1]).psi)*cos(((ss->grain_orientations)[spin1]).phi_two);  
         double l1=cos(((ss->grain_orientations)[spin1]).psi);
-	  	  dE += 2*( SurfaceEnergy(h2, k2, l2, temperature)-SurfaceEnergy(h1, k1, l1, temperature)); //surface and interface energy
+	//		  	  dE += 2*( SurfaceEnergy(h2, k2, l2, temperature)-SurfaceEnergy(h1, k1, l1, temperature)); //surface and interface energy
  //           + film_thickness*(StrainEnergyDenstiy(h2, k2, l2, temperature)-StrainEnergyDenstiy(h1, k1, l1, temperature));//elastic strain energy
 			  for (int i=-1; i<=1; i++){
 				  for (int j=-1; j<=1; j++){
@@ -903,11 +903,13 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 			#ifdef MPI_VERSION
 			MPI::COMM_WORLD.Barrier();
 			#endif
+
 //			ghostswap(grid, sublattice); // once looped over a "color", ghostswap.
 			ghostswap(grid); // once looped over a "color", ghostswap.
-			#ifdef MPI_VERSION
+            #ifdef MPI_VERSION
 			MPI::COMM_WORLD.Barrier();
-			#endif
+                #endif
+
 		}//loop over color
 		#ifndef SILENT
 		if (rank==0) print_progress(step+1, steps, iterations);
