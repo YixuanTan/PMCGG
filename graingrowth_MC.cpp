@@ -41,9 +41,9 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
 
 	unsigned long timer=0;
 	if (dim == 2) {
-		const int edge = 512;
+		const int edge = 256;
 		int number_of_fields(seeds);
-		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*10.0*10.0)); // average grain is a disk of radius 10
+		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*5.0*5.0)); // average grain is a disk of radius 10
 		#ifdef MPI_VERSION
 		while (number_of_fields % np) --number_of_fields;
 		#endif
@@ -178,7 +178,7 @@ double SurfaceEnergy(const double h, const double k, const double l, const doubl
   return surface_energy;
 }
 
-void ReadTemperature(double* temperature_along_x, int size){
+void ReadTemperature(double* temperature_along_x, const int size){
   std::ifstream ifs("temperature.txt", std::ios::in); // sample_temperature.txt is a sample temperature file. temperature is assumed to be a function (only) of x coordinate. 1 st column means x coordinate and 2nd column means temperature. The 1st row of the file (current time is XXXX) is the time record from heater transfer simulation.
   std::vector<std::pair<double, double> > coords_and_temperatures;
   double x_coordinate, temperature;
@@ -217,7 +217,7 @@ double LargeAngleGrainBoundaryEnergy(const double temperature){//copper (100)|ND
   return 0.625+(temperature-1198.0)*(-1.0e-4);
 }
 
-double StrainEnergyDenstiy(double h, double k, double l, double temperature){
+double StrainEnergyDenstiy(const double h, const double k, const double l, const double temperature){
   double c11=170.2e9+(temperature-298)*(-0.0353e9);//Pa^-1  N.J. Park, D.P. Field, Predicting thickness dependent twin boundary formation in sputtered Cu films, Scripta Materialia, 54.6, 2006, pp. 999-1003;
   double c12=123.2e9+(temperature-298)*(-0.0153e9);//Pa^-1
   double c44=75.4e9+(temperature-298)*(-0.0277e9);//Pa^-1
@@ -240,10 +240,38 @@ double IncoherentTwinBoundaryEnergy(const double temperature){
 //  std::cout<<"IncoherentTwinBoundaryEnergy fuction has been called"<<std::endl;
   return incoherent_twin_boundary_energy;
 }
+ 
+bool CheckSixtyDegreeRotation(const double h, const double k, const double l, const double hh, const double kk, const double ll){//hkl is the neighbour, hh kk ll is the site to be/after fliped
+  bool SixtyDegreeRatationAboutTriones = false;
+  double cosine_hkl_abc, cosine_hhkkll_abc, hn1, kn1, ln1, hn2, kn2, ln2, hkl_magnitude, hhkkll_magnitude, abc_magnitude, cosine_two_prjectors;
+  const double rotation_tolerance=1.0e-2;  // cos^-1(0.51)=59.34 deg   cos^-1(0.49)=60.66 deg
+  for(double a=-1.0; a<=1.0; a+=2.0){
+    for(double b=-1.0; b<=1.0; b+=2.0){
+      for(double c=-1.0; c<=1.0; c+=2.0){
+        abc_magnitude = sqrt(a*a+b*b+c*c);
+        hkl_magnitude = sqrt(h*h+k*k+l*l);
+        hhkkll_magnitude = sqrt(hh*hh+kk*kk+ll*ll);
+        cosine_hkl_abc = (h*a+k*b+l*c)/hkl_magnitude/abc_magnitude;
+        cosine_hhkkll_abc = (hh*a+kk*b+ll*c)/hhkkll_magnitude/abc_magnitude;
+        hn1 = h - hkl_magnitude*cosine_hkl_abc*a/abc_magnitude; // h, k, l preject to the equator plan as hn1 kn1 ln1
+        kn1 = k - hkl_magnitude*cosine_hkl_abc*b/abc_magnitude;
+        ln1 = l - hkl_magnitude*cosine_hkl_abc*c/abc_magnitude;
+        hn2 = hh - hhkkll_magnitude*cosine_hhkkll_abc*a/abc_magnitude; // hh, kk, ll preject to the equator plan as hn1 kn1 ln1
+        kn2 = kk - hhkkll_magnitude*cosine_hhkkll_abc*b/abc_magnitude;
+        ln2 = ll - hhkkll_magnitude*cosine_hhkkll_abc*c/abc_magnitude;
+        cosine_two_prjectors = (hn1*hn2+kn1*kn2+ln1*ln2)/sqrt(hn1*hn1+kn1*kn1+ln1*ln1)/sqrt(hn2*hn2+kn2*kn2+ln2*ln2);
+        if(fabs(cosine_two_prjectors-0.5)<rotation_tolerance){
+          SixtyDegreeRatationAboutTriones = true;
+          return SixtyDegreeRatationAboutTriones;
+        }
+      }
+    }
+  }
+  return SixtyDegreeRatationAboutTriones;
+}
 
 template <int dim> void* flip_index_helper( void* s )
 {
-  double rotation_tolerance=0.5e-1;  // cos^-1(0.51)=59.34 deg   cos^-1(0.49)=60.66 deg
   double cos_tolerance=0.999; //cos^-1(0.999)=2.563 deg   cos^-1(0.9999)=0.8103 deg
   srand(time(NULL)); /* seed random number generator */
 	flip_index<dim>* ss = static_cast<flip_index<dim>*>(s);
@@ -290,8 +318,8 @@ template <int dim> void* flip_index_helper( void* s )
     }
     bool site_out_of_domain = false;
     for(int i=0; i<dim; i++){
-//      if(x[i]<x0(*(ss->grid), i) || x[i]>x1(*(ss->grid), i)){
-      if(x[i]<x0(*(ss->grid), i) || x[i]>x1(*(ss->grid), i)-1){
+      if(x[i]<x0(*(ss->grid), i) || x[i]>x1(*(ss->grid), i)){
+//      if(x[i]<x0(*(ss->grid), i) || x[i]>x1(*(ss->grid), i)-1){
         site_out_of_domain = true;
         break;//break from the for int i loop
       }
@@ -350,7 +378,6 @@ int rank = MPI::COMM_WORLD.Get_rank();
 			// compute energy change
 			double dE = 0.0;
       if(dim==2){
-
         double film_thickness = 1.0e-6;
         double temperature=((ss->temperature_along_x))[x[0]];
         double h2=sin(((ss->grain_orientations)[spin2]).psi)*sin(((ss->grain_orientations)[spin2]).phi_two); 
@@ -370,7 +397,7 @@ int rank = MPI::COMM_WORLD.Get_rank();
     				  int spin = (*(ss->grid))(r)%200;
 //              dE += 1.0/2*((spin!=spin2)-(spin!=spin1))*film_thickness*LargeAngleGrainBoundaryEnergy(temperature); // grain boundary energy  
 //              if(rank==0 ) {std::cout<<(spin!=spin2)<<" "<<(spin!=spin1)<<std::endl;getchar();}
- //         std::cout<<"dE is "<<dE<<" dE is "<<dE/unit_grain_boundary_area<<"\n";
+//            std::cout<<"dE is "<<dE<<" dE is "<<dE/unit_grain_boundary_area<<"\n";
 
               bool incoherent_twin_boundary = false, coherent_twin_boundary = false;
               double max,medium,min;
@@ -378,25 +405,9 @@ int rank = MPI::COMM_WORLD.Get_rank();
               double h=sin(((ss->grain_orientations)[spin]).psi)*sin(((ss->grain_orientations)[spin]).phi_two);  
               double k=sin(((ss->grain_orientations)[spin]).psi)*cos(((ss->grain_orientations)[spin]).phi_two);  
               double l=cos(((ss->grain_orientations)[spin]).psi);
-              double cosine_normal_directions_one=fabs(h*h1+k*k1+l*l1)/sqrt(h*h+k*k+l*l)/sqrt(h1*h1+k1*k1+l1*l1);
-              double cosine_normal_directions_two=fabs(h*h2+k*k2+l*l2)/sqrt(h*h+k*k+l*l)/sqrt(h2*h2+k2*k2+l2*l2);
-         //         std::cout<<h1<<" "<<k1<<" "<<l1<<std::endl;
-              if(fabs(cosine_normal_directions_one-0.816)<rotation_tolerance){
-                //if incoherent twin
-                max=MaxOfThreeNumber(h,k,l);
-                medium=MediumOfThreeNumber(h,k,l);
-                min=MinOfThreeNumber(h,k,l);
-                double cosine_nd_trione=fabs((-max+medium+min))/sqrt(3.0)/sqrt(max*max+medium*medium+min*min);//<111> w.r.t NDs
-                if(cosine_nd_trione<rotation_tolerance){
-                  max=MaxOfThreeNumber(h1,k1,l1);
-                  medium=MediumOfThreeNumber(h1,k1,l1);
-                  min=MinOfThreeNumber(h1,k1,l1);
-                  cosine_nd_trione=fabs((-max+medium+min))/sqrt(3.0)/sqrt(max*max+medium*medium+min*min);
- //                 std::cout<<"cosine_nd_trione is "<<cosine_nd_trione<<" "<<h1<<" "<<k1<<" "<<l1<<std::endl;
-                  if(cosine_nd_trione<rotation_tolerance){
-                    incoherent_twin_boundary=true;
-                  }
-                }
+
+              if(CheckSixtyDegreeRotation(h,k,l,h1,k1,l1)){// if h k l is 60 degree away from h1 k1 l1 w.r.t. rotating around <111>
+                incoherent_twin_boundary = true;
                 if(i==0){//i=0 j!=0   x[0] along rolling direction
                   double transverse_direction[3];
                   //check self
@@ -489,21 +500,8 @@ int rank = MPI::COMM_WORLD.Get_rank();
               //check with index after flip
               incoherent_twin_boundary = false;
               coherent_twin_boundary = false;
-              if(fabs(cosine_normal_directions_two-0.816)<rotation_tolerance){//60 deg rotation from ND to ND
-                //if incoherent twin
-                max=MaxOfThreeNumber(h,k,l);
-                medium=MediumOfThreeNumber(h,k,l);
-                min=MinOfThreeNumber(h,k,l);
-                double cosine_nd_trione=fabs((-max+medium+min))/sqrt(3.0)/sqrt(max*max+medium*medium+min*min);//<111> w.r.t NDs
-                if(cosine_nd_trione<rotation_tolerance){
-                  max=MaxOfThreeNumber(h2,k2,l2);
-                  medium=MediumOfThreeNumber(h2,k2,l2);
-                  min=MinOfThreeNumber(h2,k2,l2);
-                  cosine_nd_trione=fabs((-max+medium+min))/sqrt(3.0)/sqrt(max*max+medium*medium+min*min);
-                  if(cosine_nd_trione<rotation_tolerance){
-                    incoherent_twin_boundary=true;
-                  }
-                }
+              if(CheckSixtyDegreeRotation(h,k,l,h2,k2,l2)){//60 deg rotation from ND to ND
+                incoherent_twin_boundary = true;
                 if(i==0){//i=0 j!=0   x[0] along rolling direction
                   double transverse_direction[3];
                   //check self
@@ -629,8 +627,8 @@ int rank = MPI::COMM_WORLD.Get_rank();
 template <int dim> bool OutsideDomainCheck(MMSP::grid<dim, int>& grid, vector<int>* x){
   bool outside_domain=false;
   for(int i=0; i<dim; i++){
-//    if((*x)[i]<x0(grid, i) || (*x)[i]>x1(grid, i)){
-    if((*x)[i]<x0(grid, i) || (*x)[i]>x1(grid, i)-1){
+    if((*x)[i]<x0(grid, i) || (*x)[i]>x1(grid, i)){
+//    if((*x)[i]<x0(grid, i) || (*x)[i]>x1(grid, i)-1){
       outside_domain=true;
       break;
     }
@@ -675,7 +673,7 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 	static int iterations = 1;
 	if (rank==0) print_progress(0, steps, iterations);
 	#endif
-	ghostswap(grid); 
+//	ghostswap(grid); 
 /*
   int edge = 512;
   int number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*10.*10.)); // average grain is a disk of radius 10
@@ -722,8 +720,8 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
   int dimension_length=0, number_of_lattice_cells=1;
   int lattice_cells_each_dimension[dim];
   for(int i=0; i<dim; i++){
-//    dimension_length = x1(grid, i)-x0(grid, i);
-    dimension_length = x1(grid, i)-1-x0(grid, i);
+    dimension_length = x1(grid, i)-x0(grid, i);
+//    dimension_length = x1(grid, i)-1-x0(grid, i);
     if(x0(grid, 0)%2==0)
       lattice_cells_each_dimension[i] = dimension_length/2+1;
     else
