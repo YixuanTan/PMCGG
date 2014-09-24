@@ -41,9 +41,9 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
 
 	unsigned long timer=0;
 	if (dim == 2) {
-		const int edge = 256;
+		const int edge = 500;
 		int number_of_fields(seeds);
-		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*5.0*5.0)); // average grain is a disk of radius 10
+		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*0.01*0.01)); // average grain is a disk of radius 10
 		#ifdef MPI_VERSION
 		while (number_of_fields % np) --number_of_fields;
 		#endif
@@ -178,7 +178,7 @@ double SurfaceEnergy(const double h, const double k, const double l, const doubl
   return surface_energy;
 }
 
-void ReadTemperature(double* temperature_along_x, const int size){
+void ReadTemperature(double* temperature_along_x, const int size, const double global_temperature){
   std::ifstream ifs("temperature.txt", std::ios::in); // sample_temperature.txt is a sample temperature file. temperature is assumed to be a function (only) of x coordinate. 1 st column means x coordinate and 2nd column means temperature. The 1st row of the file (current time is XXXX) is the time record from heater transfer simulation.
   std::vector<std::pair<double, double> > coords_and_temperatures;
   double x_coordinate, temperature;
@@ -197,12 +197,14 @@ void ReadTemperature(double* temperature_along_x, const int size){
     i=i_last_step;
     while(i<coords_and_temperatures.size()){
       if(i!=coords_and_temperatures.size()-1 && loop_temperatures_count>(coords_and_temperatures[i].first) && (coords_and_temperatures[i+1].first)>loop_temperatures_count){
-        temperature_along_x[loop_temperatures_count]=coords_and_temperatures[i].second+(coords_and_temperatures[i+1].second-coords_and_temperatures[i].second)/(coords_and_temperatures[i+1].first-coords_and_temperatures[i].first)*((1.0*loop_temperatures_count)-coords_and_temperatures[i].first);
+	//        temperature_along_x[loop_temperatures_count]=coords_and_temperatures[i].second+(coords_and_temperatures[i+1].second-coords_and_temperatures[i].second)/(coords_and_temperatures[i+1].first-coords_and_temperatures[i].first)*((1.0*loop_temperatures_count)-coords_and_temperatures[i].first);
+	temperature_along_x[loop_temperatures_count]=global_temperature;
         i_last_step = i;
         i++;
         break;
       }else if((1.0*loop_temperatures_count)==coords_and_temperatures[i].first){
-        temperature_along_x[loop_temperatures_count]=coords_and_temperatures[i].second;
+	//      temperature_along_x[loop_temperatures_count]=coords_and_temperatures[i].second;
+	temperature_along_x[loop_temperatures_count]=global_temperature;
         i_last_step = i;
         i++;
         break;
@@ -329,7 +331,7 @@ template <int dim> void* flip_index_helper( void* s )
       continue; //continue the int hh loop
     }
 int rank = MPI::COMM_WORLD.Get_rank();
-		int spin1 = (*(ss->grid))(x)%200;
+		int spin1 = (*(ss->grid))(x);
 		// determine neighboring spins
     vector<int> r(dim,0);
     std::vector<int> neighbors;
@@ -341,7 +343,7 @@ int rank = MPI::COMM_WORLD.Get_rank();
           if(!(i==0 && j==0)){
             r[0] = x[0] + i;
             r[1] = x[1] + j;
-            int spin = (*(ss->grid))(r)%200;
+            int spin = (*(ss->grid))(r);
             neighbors.push_back(spin);
             if(spin==spin1) 
               number_of_same_neighours++;
@@ -365,15 +367,15 @@ int rank = MPI::COMM_WORLD.Get_rank();
         }
 		  }
     }
-/*
+    
     //check if inside a grain
     if(number_of_same_neighours==neighbors.size()){//inside a grain
       continue;//continue for
-    }*/
-    // choose a random neighbor spin
-//    int spin2 = neighbors[rand()%neighbors.size()];
+      }
+    //     choose a random neighbor spin
+    int spin2 = neighbors[rand()%neighbors.size()];
 		// choose a random spin from Q states
-    int spin2 = rand()%200;
+ //       int spin2 = rand()%200;
 		if (spin1!=spin2){
 			// compute energy change
 			double dE = 0.0;
@@ -386,7 +388,7 @@ int rank = MPI::COMM_WORLD.Get_rank();
         double h1=sin(((ss->grain_orientations)[spin1]).psi)*sin(((ss->grain_orientations)[spin1]).phi_two);   
         double k1=sin(((ss->grain_orientations)[spin1]).psi)*cos(((ss->grain_orientations)[spin1]).phi_two);  
         double l1=cos(((ss->grain_orientations)[spin1]).psi);
-	//		  	  dE += 2*( SurfaceEnergy(h2, k2, l2, temperature)-SurfaceEnergy(h1, k1, l1, temperature)); //surface and interface energy
+	//      		  	  dE += 2*( SurfaceEnergy(h2, k2, l2, temperature)-SurfaceEnergy(h1, k1, l1, temperature)); //surface and interface energy
  //           + film_thickness*(StrainEnergyDenstiy(h2, k2, l2, temperature)-StrainEnergyDenstiy(h1, k1, l1, temperature));//elastic strain energy
 			  for (int i=-1; i<=1; i++){
 				  for (int j=-1; j<=1; j++){
@@ -394,10 +396,10 @@ int rank = MPI::COMM_WORLD.Get_rank();
   					  r[0] = x[0] + i;
 	  				  r[1] = x[1] + j;
 	
-    				  int spin = (*(ss->grid))(r)%200;
-//              dE += 1.0/2*((spin!=spin2)-(spin!=spin1))*film_thickness*LargeAngleGrainBoundaryEnergy(temperature); // grain boundary energy  
-//              if(rank==0 ) {std::cout<<(spin!=spin2)<<" "<<(spin!=spin1)<<std::endl;getchar();}
-//            std::cout<<"dE is "<<dE<<" dE is "<<dE/unit_grain_boundary_area<<"\n";
+    				  int spin = (*(ss->grid))(r);
+				  dE += 1.0/2*((spin!=spin2)-(spin!=spin1));
+				    //				                dE += 1.0/2*((spin!=spin2)-(spin!=spin1))*film_thickness*LargeAngleGrainBoundaryEnergy(temperature); // grain boundary energy  
+/*
 
               bool incoherent_twin_boundary = false, coherent_twin_boundary = false;
               double max,medium,min;
@@ -588,8 +590,8 @@ int rank = MPI::COMM_WORLD.Get_rank();
                 dE += 0.5*film_thickness*IncoherentTwinBoundaryEnergy(temperature);
               }
               else if(incoherent_twin_boundary == false && coherent_twin_boundary == false){
-                dE += 0.5*(spin!=spin2)*film_thickness*LargeAngleGrainBoundaryEnergy(temperature); //  grain boundary energy  
-		          }
+                dE += 0.5*(spin!=spin2)*film_thickness*LargeAngleGrainBoundaryEnergy(temperature); // grain boundary energy  
+		          }*/
             }// if(!(i==0 && j==0))
 				  }
         }
@@ -647,7 +649,7 @@ void ReadData(EulerAngles *grain_orientations){
   ifs.close();
 }
 
-template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, int nthreads)
+template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, int nthreads, double global_temperature)
 {
 	#if (!defined MPI_VERSION) && ((defined CCNI) || (defined BGQ))
 	std::cerr<<"Error: MPI is required for CCNI."<<std::endl;
@@ -683,31 +685,6 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 */
   EulerAngles *grain_orientations = new EulerAngles[200];
 
-  /*
-  if(rank==0){
-    vector<int> rr(dim,0);
-    rr[dim-2]=2;
-    rr[dim-1]=254;
-    std::cout<<"(2, 254) is "<<grid(rr)<<std::endl;
-    rr[dim-2]=2;
-    rr[dim-1]=255;
-    std::cout<<"(2, 255) is "<<grid(rr)<<std::endl;
-    rr[dim-2]=2;
-    rr[dim-1]=256;
-    std::cout<<"(2, 256) is "<<grid(rr)<<std::endl;
-  }
-  if(rank==1){
-    vector<int> rr(dim,0);
-    rr[dim-2]=2;
-    rr[dim-1]=255;
-    std::cout<<"(2, 255) is "<<grid(rr)<<std::endl;
-    rr[dim-2]=2;
-    rr[dim-1]=256;
-    std::cout<<"(2, 256) is "<<grid(rr)<<std::endl;
-    rr[dim-2]=2;
-    rr[dim-1]=257;
-    std::cout<<"(2, 257) is "<<grid(rr)<<std::endl;
-  }*/
   if(rank==0){
     ReadData(grain_orientations);
   }
@@ -746,7 +723,7 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
   int size=(g1(grid, 0)-g0(grid, 0)+1);
   double *temperature_along_x = new double[size];
   if(rank==0){
-    ReadTemperature(temperature_along_x, size);
+    ReadTemperature(temperature_along_x, size, global_temperature);
   }
 	MPI::COMM_WORLD.Barrier();
   MPI::COMM_WORLD.Bcast(temperature_along_x, size, MPI_DOUBLE, 0);
