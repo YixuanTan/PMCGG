@@ -588,7 +588,7 @@ int rank = MPI::COMM_WORLD.Get_rank();
                 dE += 0.5*film_thickness*IncoherentTwinBoundaryEnergy(temperature);
               }
               else if(incoherent_twin_boundary == false && coherent_twin_boundary == false){
-                dE += 0.5*(spin!=spin2)*film_thickness*LargeAngleGrainBoundaryEnergy(temperature); // grain boundary energy  
+                dE += 0.5*(spin!=spin2)*film_thickness*LargeAngleGrainBoundaryEnergy(temperature); //  grain boundary energy  
 		          }
             }// if(!(i==0 && j==0))
 				  }

@@ -120,7 +120,7 @@ int main(int argc, char* argv[])
 		std::cerr<<"File input error: unknown grid data type ("<<type<<").\n"<<std::endl;
 		exit(-1);
 	} else if (not sparse_type and not scalar_type and not vector_type) {
-		std::cout<<"Warning: "<<type<<" does not contain an MMSP class. Assuming a grid of plain scalars."<<std::endl;
+//		std::cout<<"Warning: "<<type<<" does not contain an MMSP class. Assuming a grid of plain scalars."<<std::endl;
 		scalar_type=true;
 	}
 
@@ -223,7 +223,7 @@ int main(int argc, char* argv[])
 	input.close();
 	output.close();
 
-	std::cout<<"Endianness of "<<argv[1]<<" successfully inverted."<<std::endl;
+//	std::cout<<"Endianness of "<<argv[1]<<" successfully inverted."<<std::endl;
 
 }
 
