@@ -43,7 +43,7 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
 	if (dim == 2) {
 		const int edge = 500;
 		int number_of_fields(seeds);
-		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*0.01*0.01)); // average grain is a disk of radius 10
+		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*15*15)); // average grain is a disk of radius 10
 		#ifdef MPI_VERSION
 		while (number_of_fields % np) --number_of_fields;
 		#endif
@@ -138,6 +138,8 @@ template <int dim> struct flip_index {
   int lattice_cells_each_dimension[dim];
   double* temperature_along_x; 
   EulerAngles* grain_orientations;
+  double t_mcs_max;
+  double t_s;
 };
 
 double MaxOfThreeNumber(const double h, const double k, const double l){
@@ -178,13 +180,13 @@ double SurfaceEnergy(const double h, const double k, const double l, const doubl
   return surface_energy;
 }
 
-void ReadTemperature(double* temperature_along_x, const int size, const double global_temperature){
+void ReadTemperature(double* temperature_along_x, const int model_dimension){
   std::ifstream ifs("temperature.txt", std::ios::in); // sample_temperature.txt is a sample temperature file. temperature is assumed to be a function (only) of x coordinate. 1 st column means x coordinate and 2nd column means temperature. The 1st row of the file (current time is XXXX) is the time record from heater transfer simulation.
   std::vector<std::pair<double, double> > coords_and_temperatures;
   double x_coordinate, temperature;
   ifs.ignore(200, '\n');
   while(ifs>>x_coordinate>>temperature){//start from the second line
-    coords_and_temperatures.push_back(std::make_pair(x_coordinate*(size-1), temperature));
+    coords_and_temperatures.push_back(std::make_pair(x_coordinate*(model_dimension-1), temperature));
   }
   ifs.close();
 /*  for(unsigned int i=0; i<coords_and_temperatures.size(); i++){
@@ -193,18 +195,16 @@ void ReadTemperature(double* temperature_along_x, const int size, const double g
   int loop_temperatures_count=0;
   unsigned int i_last_step=0;
   unsigned int i=0;
-  while(loop_temperatures_count<size){
+  while(loop_temperatures_count<model_dimension){
     i=i_last_step;
     while(i<coords_and_temperatures.size()){
       if(i!=coords_and_temperatures.size()-1 && loop_temperatures_count>(coords_and_temperatures[i].first) && (coords_and_temperatures[i+1].first)>loop_temperatures_count){
-	//        temperature_along_x[loop_temperatures_count]=coords_and_temperatures[i].second+(coords_and_temperatures[i+1].second-coords_and_temperatures[i].second)/(coords_and_temperatures[i+1].first-coords_and_temperatures[i].first)*((1.0*loop_temperatures_count)-coords_and_temperatures[i].first);
-	temperature_along_x[loop_temperatures_count]=global_temperature;
+	        temperature_along_x[loop_temperatures_count]=coords_and_temperatures[i].second+(coords_and_temperatures[i+1].second-coords_and_temperatures[i].second)/(coords_and_temperatures[i+1].first-coords_and_temperatures[i].first)*((1.0*loop_temperatures_count)-coords_and_temperatures[i].first);
         i_last_step = i;
         i++;
         break;
       }else if((1.0*loop_temperatures_count)==coords_and_temperatures[i].first){
-	//      temperature_along_x[loop_temperatures_count]=coords_and_temperatures[i].second;
-	temperature_along_x[loop_temperatures_count]=global_temperature;
+	      temperature_along_x[loop_temperatures_count]=coords_and_temperatures[i].second;
         i_last_step = i;
         i++;
         break;
@@ -213,6 +213,11 @@ void ReadTemperature(double* temperature_along_x, const int size, const double g
     }// while i
     loop_temperatures_count++;
   }
+/*
+  for(int i=0; i<loop_temperatures_count;i++){
+    std::cout<<"x="<<i<<"  temp="<<temperature_along_x[i]<<std::endl;
+  }  
+*/
 }
 
 double LargeAngleGrainBoundaryEnergy(const double temperature){//copper (100)|ND thin film texture
@@ -274,6 +279,16 @@ bool CheckSixtyDegreeRotation(const double h, const double k, const double l, co
 
 template <int dim> void* flip_index_helper( void* s )
 {
+  double lambda = 1e-3/500;
+  double L_initial=20*lambda; //Measurements and Monte Carlo simulation of grain growth in the heat-affected zone of Ti–6Al–4V welds, Mishra, S. (2004). 
+  double L0=3e-5;
+  double K1=0.12336665;
+  double n1=0.52822367;
+  double Q=1.7e5; //Measurements and Monte Carlo simulation of grain growth in the heat-affected zone of Ti–6Al–4V welds, Mishra, S. (2004).
+  double n=1.84; //Measurements and Monte Carlo simulation of grain growth in the heat-affected zone of Ti–6Al–4V welds, Mishra, S. (2004).
+  double K_=3.01e-2; //Measurements and Monte Carlo simulation of grain growth in the heat-affected zone of Ti–6Al–4V welds, Mishra, S. (2004).
+  double R = 8.314;
+
   double cos_tolerance=0.999; //cos^-1(0.999)=2.563 deg   cos^-1(0.9999)=0.8103 deg
   srand(time(NULL)); /* seed random number generator */
 	flip_index<dim>* ss = static_cast<flip_index<dim>*>(s);
@@ -318,6 +333,7 @@ template <int dim> void* flip_index_helper( void* s )
         case 7:x[2]++; x[1]++; x[0]++; //1,1,1
       }
     }
+    
     bool site_out_of_domain = false;
     for(int i=0; i<dim; i++){
       if(x[i]<x0(*(ss->grid), i) || x[i]>x1(*(ss->grid), i)){
@@ -330,7 +346,27 @@ template <int dim> void* flip_index_helper( void* s )
       hh--;
       continue; //continue the int hh loop
     }
+
 int rank = MPI::COMM_WORLD.Get_rank();
+//if(rank==0) std::cout<<"num_of_points_to_flip is "<<ss->num_of_points_to_flip<<std::endl;
+//getchar();
+    double temperature=((ss->temperature_along_x))[x[0]];
+    double initial_physical_time=1.0/K_/exp(-Q/R/temperature)*(pow(L_initial,n)-pow(L0,n));
+    double t=ss->t_s+initial_physical_time;//t_s is the time counted from the beginning of simulation.
+//    if(rank==0) std::cout<<"t_s is "<<ss->t_s<<"initial_physical_time is "<<initial_physical_time<<std::endl;
+
+    double t_mcs=pow(1.0/K1/lambda*pow(K_*t*exp(-Q/R/temperature)+pow(L0, n),1.0/n), 1.0/n1); // t_mcs is the local MC steps counted from when the grain size is 0
+//    double t_mcs=pow((1.0/K1/lambda*pow(K_*t*exp(-Q/R/temperature)+pow(L0,n),1.0/n)-1.0/K1),1.0/n1);
+    double t_mcs_max=ss->t_mcs_max;
+    double t_mc_initial=pow(L_initial/K1/lambda,1.0/n1);
+    double site_selection_probability = (t_mcs-t_mc_initial)/t_mcs_max;
+//if(rank==0) std::cout<<"site_selection_probability is "<<site_selection_probability<<std::endl;
+	  double rd = double(rand())/double(RAND_MAX);
+    if(rd>site_selection_probability){
+//      hh--;// no need to guarantee that N times selection is performed in a configurational MC step, so hh is ony need to be the same as in uniform temp case for the highest temp site
+      continue;//this site wont be selected
+    }
+
 		int spin1 = (*(ss->grid))(x);
 		// determine neighboring spins
     vector<int> r(dim,0);
@@ -344,6 +380,7 @@ int rank = MPI::COMM_WORLD.Get_rank();
             r[0] = x[0] + i;
             r[1] = x[1] + j;
             int spin = (*(ss->grid))(r);
+
             neighbors.push_back(spin);
             if(spin==spin1) 
               number_of_same_neighours++;
@@ -380,14 +417,15 @@ int rank = MPI::COMM_WORLD.Get_rank();
 			// compute energy change
 			double dE = 0.0;
       if(dim==2){
+/*
         double film_thickness = 1.0e-6;
-        double temperature=((ss->temperature_along_x))[x[0]];
         double h2=sin(((ss->grain_orientations)[spin2]).psi)*sin(((ss->grain_orientations)[spin2]).phi_two); 
         double k2=sin(((ss->grain_orientations)[spin2]).psi)*cos(((ss->grain_orientations)[spin2]).phi_two);  
         double l2=cos(((ss->grain_orientations)[spin2]).psi);
         double h1=sin(((ss->grain_orientations)[spin1]).psi)*sin(((ss->grain_orientations)[spin1]).phi_two);   
         double k1=sin(((ss->grain_orientations)[spin1]).psi)*cos(((ss->grain_orientations)[spin1]).phi_two);  
         double l1=cos(((ss->grain_orientations)[spin1]).psi);
+*/
 	//      		  	  dE += 2*( SurfaceEnergy(h2, k2, l2, temperature)-SurfaceEnergy(h1, k1, l1, temperature)); //surface and interface energy
  //           + film_thickness*(StrainEnergyDenstiy(h2, k2, l2, temperature)-StrainEnergyDenstiy(h1, k1, l1, temperature));//elastic strain energy
 			  for (int i=-1; i<=1; i++){
@@ -649,8 +687,19 @@ void ReadData(EulerAngles *grain_orientations){
   ifs.close();
 }
 
-template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, int nthreads, double global_temperature)
+template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, int steps_finished, int nthreads)
 {
+  double maximum_temperature=0.0;
+  double lambda = 1e-3/500;
+  double L_initial=20*lambda; //Measurements and Monte Carlo simulation of grain growth in the heat-affected zone of Ti–6Al–4V welds, Mishra, S. (2004). 
+  double L0=3e-5;
+  double K1=0.12336665;
+  double n1=0.52822367;
+  double Q=1.7e5; //Measurements and Monte Carlo simulation of grain growth in the heat-affected zone of Ti–6Al–4V welds, Mishra, S. (2004).
+  double n=1.84; //Measurements and Monte Carlo simulation of grain growth in the heat-affected zone of Ti–6Al–4V welds, Mishra, S. (2004).
+  double K_=3.01e-2; //Measurements and Monte Carlo simulation of grain growth in the heat-affected zone of Ti–6Al–4V welds, Mishra, S. (2004).
+  double R = 8.314;
+
 	#if (!defined MPI_VERSION) && ((defined CCNI) || (defined BGQ))
 	std::cerr<<"Error: MPI is required for CCNI."<<std::endl;
 	exit(1);
@@ -658,7 +707,6 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 	int rank=0;
 	unsigned int np=0;
 //	#ifdef MPI_VERSION
-
 	rank=MPI::COMM_WORLD.Get_rank();
 	np=MPI::COMM_WORLD.Get_size();
 	MPI::COMM_WORLD.Barrier();
@@ -720,17 +768,23 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
     std::cerr<<"ERROR: number of pthread is too large, please reduce it to a value <= "<<number_of_lattice_cells<<std::endl;
     exit(0);
   }
-  int size=(g1(grid, 0)-g0(grid, 0)+1);
-  double *temperature_along_x = new double[size];
+  int model_dimension=(g1(grid, 0)-g0(grid, 0)+1);
+  double *temperature_along_x = new double[model_dimension];
   if(rank==0){
-    ReadTemperature(temperature_along_x, size, global_temperature);
+    ReadTemperature(temperature_along_x, model_dimension);
   }
 	MPI::COMM_WORLD.Barrier();
-  MPI::COMM_WORLD.Bcast(temperature_along_x, size, MPI_DOUBLE, 0);
+  MPI::COMM_WORLD.Bcast(temperature_along_x, model_dimension, MPI_DOUBLE, 0);
 	vector<int> x (dim,0);
 	vector<int> x_prim (dim,0);
   int coordinates_of_cell[dim];
   int initial_coordinates[dim];
+
+  for(int i=0; i<model_dimension; i++){
+    if(maximum_temperature<temperature_along_x[i]){
+      maximum_temperature = temperature_along_x[i];
+    }
+  }
 
   int **cell_coord = new int*[nthreads];//record the start coordinates of each pthread domain.
   for(int i=0; i<nthreads; i++){
@@ -859,7 +913,14 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
       }
     }// for int j 
   }//for int i
+
+  double tmc_initial = pow(L_initial/K1/lambda,1.0/n1);
+  double initial_physical_time = 1.0/K_/exp(-Q/R/maximum_temperature)*(pow(L_initial,n)-pow(L0,n));// for the site with max temp
 	for (int step=0; step<steps; step++){
+    double tmc_max = 1.0*(steps_finished+step+1);//tmc_max is max MC time steps counted from the begining of simulation.
+    double current_physical_time = 1.0/K_/exp(-Q/R/maximum_temperature)*(pow(K1*lambda*pow(tmc_max+tmc_initial,n1),n)-pow(L0,n));// isis the physical time counted from when grain size is 0
+//    std::cout<<"first "<<pow(L_initial,n)<<"  second  "<<pow(K1*lambda*pow(tmc_max+tmc_initial-1,n1),n)<<std::endl;
+    double t_s = current_physical_time - initial_physical_time;//t_s is the physical time counted from the beginning of simulation.
 		unsigned long start = rdtsc();
     int num_of_sublattices=0;
     if(dim==2) num_of_sublattices = 4; 
@@ -868,6 +929,8 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 			for (int i=0; i!= nthreads ; i++) {
 				mat_para[i].sublattice=sublattice;
 				mat_para[i].num_of_points_to_flip=num_of_grids_to_flip[i][sublattice];
+        mat_para[i].t_mcs_max= tmc_max; //tmc_max is the MC time steps counted from the beginning of simulation
+        mat_para[i].t_s= t_s;//t_s is the time counted from the beginning of simulation
         for(int k=0; k<dim; k++) mat_para[i].cell_coord[k]=cell_coord[i][k];
 				pthread_create(&p_threads[i], &attr, flip_index_helper<dim>, (void*) &mat_para[i] );
 			}//loop over threads

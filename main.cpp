@@ -60,6 +60,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	int nthreads = 1;
+  int increment_finished = 0;
 	unsigned int rank=0;
 	unsigned int np=0;
 	#ifdef MPI_VERSION
@@ -325,7 +326,8 @@ int main(int argc, char* argv[]) {
 
 			// perform computation
 			for (int i = iterations_start; i < steps; i += increment) {
-				comp_cycles = MMSP::update(*grid, increment, nthreads);
+				comp_cycles = MMSP::update(*grid, increment, increment_finished, nthreads);
+        increment_finished += increment;
 				unsigned long allcomp = 0;
 				#ifdef MPI_VERSION
 				MPI_Reduce(&comp_cycles, &allcomp, 1, MPI_DOUBLE, MPI_SUM, 0, MPI::COMM_WORLD);
@@ -415,7 +417,8 @@ int main(int argc, char* argv[]) {
 
 			// perform computation
 			for (int i = iterations_start; i < steps; i += increment) {
-				comp_cycles = MMSP::update(*grid, increment, nthreads);
+				comp_cycles = MMSP::update(*grid, increment, increment_finished, nthreads);
+        increment_finished += increment;
 				unsigned long allcomp = 0;
 				#ifdef MPI_VERSION
 				MPI_Reduce(&comp_cycles, &allcomp, 1, MPI_DOUBLE, MPI_SUM, 0, MPI::COMM_WORLD);
@@ -623,7 +626,8 @@ int main(int argc, char* argv[]) {
 			// perform computation
 			for (int i = iterations_start; i < steps; i += increment) {
 
-				MMSP::update(grid, increment, nthreads);
+				MMSP::update(grid, increment, increment_finished, nthreads);
+        increment_finished += increment;
 
 				// generate output filename
 				std::stringstream outstr;
@@ -656,7 +660,8 @@ int main(int argc, char* argv[]) {
 
 			// perform computation
 			for (int i = iterations_start; i < steps; i += increment) {
-				MMSP::update(grid, increment, nthreads);
+				MMSP::update(grid, increment, increment_finished, nthreads);
+        increment_finished += increment;
 
 				// generate output filename
 				std::stringstream outstr;
