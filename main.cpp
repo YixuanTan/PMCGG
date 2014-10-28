@@ -184,7 +184,7 @@ int main(int argc, char* argv[]) {
 	// run tessellation & simulation
 	else if (std::string(argv[1]) == std::string("--nonstop")) {
 		// bad argument list
-		if (argc!=7) {
+		if (argc!=8) {
 			std::cout << PROGRAM << ": bad argument list.  Use\n\n";
 			std::cout << "    " << PROGRAM << " --help\n\n";
 			std::cout << "to generate help message.\n\n";
@@ -238,9 +238,11 @@ int main(int argc, char* argv[]) {
 			exit(-1);
 		}
 
-		nthreads = atoi(argv[6]);
+		int step_to_nonuniform = atoi(argv[6]); // number of MC steps after which non-uniform temperature field is applied.
+
+		nthreads = atoi(argv[7]);
 		// must have integral nthreads
-		if (std::string(argv[6]).find_first_not_of("0123456789") != std::string::npos) {
+		if (std::string(argv[7]).find_first_not_of("0123456789") != std::string::npos) {
 			std::cout << PROGRAM << ": nthreads must have integral value.  Use\n\n";
 			std::cout << "    " << PROGRAM << " --help\n\n";
 			std::cout << "to generate help message.\n\n";
@@ -326,7 +328,11 @@ int main(int argc, char* argv[]) {
 
 			// perform computation
 			for (int i = iterations_start; i < steps; i += increment) {
-				comp_cycles = MMSP::update(*grid, increment, increment_finished, nthreads);
+        if(increment_finished<step_to_nonuniform-1){
+				  comp_cycles = MMSP::update_uniformly(*grid, increment, nthreads);
+        }else{
+          comp_cycles = MMSP::update(*grid, increment, increment_finished, nthreads, step_to_nonuniform);
+        }
         increment_finished += increment;
 				unsigned long allcomp = 0;
 				#ifdef MPI_VERSION
@@ -417,7 +423,7 @@ int main(int argc, char* argv[]) {
 
 			// perform computation
 			for (int i = iterations_start; i < steps; i += increment) {
-				comp_cycles = MMSP::update(*grid, increment, increment_finished, nthreads);
+				comp_cycles = MMSP::update_uniformly(*grid, increment, nthreads);
         increment_finished += increment;
 				unsigned long allcomp = 0;
 				#ifdef MPI_VERSION
@@ -626,7 +632,7 @@ int main(int argc, char* argv[]) {
 			// perform computation
 			for (int i = iterations_start; i < steps; i += increment) {
 
-				MMSP::update(grid, increment, increment_finished, nthreads);
+				MMSP::update_uniformly(grid, increment, nthreads);
         increment_finished += increment;
 
 				// generate output filename
@@ -660,7 +666,7 @@ int main(int argc, char* argv[]) {
 
 			// perform computation
 			for (int i = iterations_start; i < steps; i += increment) {
-				MMSP::update(grid, increment, increment_finished, nthreads);
+				MMSP::update_uniformly(grid, increment, nthreads);
         increment_finished += increment;
 
 				// generate output filename
