@@ -18,6 +18,16 @@
 #include"tessellate.hpp"
 #include"output.cpp"
 
+double lambda = 1e-3/256;
+double L_initial=1.844e-5;// after 1000 MC steps, fitted from 256x256 grid
+double L0=1.1e-6;
+double K1=0.12336665;
+double n1=0.52822367;
+double Q=5.4261e4; //fitted from Gangulee, A. ”Structure of electroplated and vapordeposited copper films. III. Recrystallization and grain growth.” Journal of Applied Physics 45.9 (1974): 3749-3756.
+double n=2; 
+double K_=4.622e-9; //fitted from Gangulee, A. ”Structure of electroplated and vapordeposited copper films. III. Recrystallization and grain growth.” Journal of Applied Physics 45.9 (1974): 3749-3756.
+double R = 8.314;
+
 struct EulerAngles{
   double phi_one;
   double psi;
@@ -43,7 +53,7 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
 	if (dim == 2) {
 		const int edge = 256;
 		int number_of_fields(seeds);
-		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*0.1*0.1)); /* average grain is a disk of radius XXX
+		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*5*5)); /* average grain is a disk of radius XXX
 , XXX cannot be smaller than 0.1, or BGQ will abort.*/
 		#ifdef MPI_VERSION
 		while (number_of_fields % np) --number_of_fields;
@@ -430,16 +440,6 @@ template <int dim> void* flip_index_helper_uniformly( void* s )
 
 template <int dim> void* flip_index_helper( void* s )
 {
-  double lambda = 1e-3/256;
-  double L_initial=1.844e-5;// after 1000 MC steps, fitted from 256x256 grid
-  double L0=1.1e-6;
-  double K1=0.12336665;
-  double n1=0.52822367;
-  double Q=5.4261e4; //fitted from Gangulee, A. ”Structure of electroplated and vapordeposited copper films. III. Recrystallization and grain growth.” Journal of Applied Physics 45.9 (1974): 3749-3756.
-  double n=2; 
-  double K_=4.622e-9; //fitted from Gangulee, A. ”Structure of electroplated and vapordeposited copper films. III. Recrystallization and grain growth.” Journal of Applied Physics 45.9 (1974): 3749-3756.
-  double R = 8.314;
-
   double cos_tolerance=0.999; //cos^-1(0.999)=2.563 deg   cos^-1(0.9999)=0.8103 deg
   srand(time(NULL)); /* seed random number generator */
 	flip_index<dim>* ss = static_cast<flip_index<dim>*>(s);
@@ -484,7 +484,7 @@ template <int dim> void* flip_index_helper( void* s )
         case 7:x[2]++; x[1]++; x[0]++; //1,1,1
       }
     }
-    
+
     bool site_out_of_domain = false;
     for(int i=0; i<dim; i++){
       if(x[i]<x0(*(ss->grid), i) || x[i]>x1(*(ss->grid), i)){
@@ -498,19 +498,15 @@ template <int dim> void* flip_index_helper( void* s )
       continue; //continue the int hh loop
     }
 
-int rank = MPI::COMM_WORLD.Get_rank();
+    int rank = MPI::COMM_WORLD.Get_rank();
 //if(rank==0) std::cout<<"num_of_points_to_flip is "<<ss->num_of_points_to_flip<<std::endl;
 //getchar();
     double temperature=((ss->temperature_along_x))[x[0]];
     double initial_physical_time=1.0/K_/exp(-Q/R/temperature)*(pow(L_initial,n)-pow(L0,n));
-    double t=ss->t_s+initial_physical_time;//t_s is the time counted from the beginning of simulation.
-//    if(rank==0) std::cout<<"t_s is "<<ss->t_s<<"initial_physical_time is "<<initial_physical_time<<std::endl;
-
-    double t_mcs=pow(1.0/K1/lambda*pow(K_*t*exp(-Q/R/temperature)+pow(L0, n),1.0/n), 1.0/n1); // t_mcs is the local MC steps counted from when the grain size is 0
-//    double t_mcs=pow((1.0/K1/lambda*pow(K_*t*exp(-Q/R/temperature)+pow(L0,n),1.0/n)-1.0/K1),1.0/n1);
-    double t_mcs_max=ss->t_mcs_max;
-    double t_mc_initial=pow(L_initial/K1/lambda,1.0/n1);
-    double site_selection_probability = (t_mcs-t_mc_initial)/t_mcs_max;
+    double t_mc_initial = pow(L_initial/K1/lambda,1.0/n1);
+    double t_mcs = (*(ss->grid)).AccessToTmc(x);
+    double t_mcs_max = ss->t_mcs_max;
+    double site_selection_probability = t_mcs/t_mcs_max;
 //if(rank==0) std::cout<<"site_selection_probability is "<<site_selection_probability<<std::endl;
 	  double rd = double(rand())/double(RAND_MAX);
     if(rd>site_selection_probability){
@@ -559,7 +555,7 @@ int rank = MPI::COMM_WORLD.Get_rank();
     //check if inside a grain
     if(number_of_same_neighours==neighbors.size()){//inside a grain
       continue;//continue for
-      }
+    }
     //     choose a random neighbor spin
     int spin2 = neighbors[rand()%neighbors.size()];
 		// choose a random spin from Q states
@@ -863,7 +859,7 @@ template <int dim> unsigned long update_uniformly(MMSP::grid<dim, int>& grid, in
 	static int iterations = 1;
 	if (rank==0) print_progress(0, steps, iterations);
 	#endif
-//	ghostswap(grid); 
+
 /*
   int edge = 512;
   int number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*10.*10.)); // average grain is a disk of radius 10
@@ -1064,7 +1060,7 @@ template <int dim> unsigned long update_uniformly(MMSP::grid<dim, int>& grid, in
 
 //			ghostswap(grid, sublattice); // once looped over a "color", ghostswap.
 			ghostswap(grid); // once looped over a "color", ghostswap.
-            #ifdef MPI_VERSION
+      #ifdef MPI_VERSION
 			MPI::COMM_WORLD.Barrier();
                 #endif
 
@@ -1103,18 +1099,64 @@ template <int dim> unsigned long update_uniformly(MMSP::grid<dim, int>& grid, in
 	return total_update_time/np; // average update time
 }
 
+template <int dim> double TmcMax(MMSP::grid<dim, int>& grid, double *temp_at_max_tmc){
+   double tmc_max = 0.0;
+   vector<int> coords (dim,0);
+   if(dim==2){
+       for(int codx=x0(grid, 0); codx <= x1(grid, 0); codx++) 
+         for(int cody=x0(grid, 1); cody <= x1(grid, 1); cody++){
+           coords[0] = codx;
+           coords[1] = cody;
+           if(grid.AccessToTmc(coords) > tmc_max)
+             tmc_max = grid.AccessToTmc(coords);
+         }
+   }
+   else if(dim==3){
+     for(int codx=x0(grid, 0); codx <= x1(grid, 0); codx++) 
+       for(int cody=x0(grid, 1); cody <= x1(grid, 1); cody++) 
+         for(int codz=x0(grid, 2); codz <= x1(grid, 2); codz++){
+           coords[0] = codx;
+           coords[1] = cody;
+           coords[2] = codz;
+           if(grid.AccessToTmc(coords) > tmc_max)
+             tmc_max = grid.AccessToTmc(coords);
+         }
+   }
+   (*temp_at_max_tmc) = grid.AccessToTmp(coords);
+   return tmc_max;
+}
+
+template <int dim> void UpdateLocalTmc(MMSP::grid<dim, int>& grid, double t_inc){
+   vector<int> coords (dim,0);
+   if(dim==2){
+       for(int codx=x0(grid, 0); codx <= x1(grid, 0); codx++) 
+         for(int cody=x0(grid, 1); cody <= x1(grid, 1); cody++){
+           coords[0] = codx;
+           coords[1] = cody;
+           double exp_eqn_rhs = pow(K1*lambda*pow(grid.AccessToTmc(coords), n1), n) - pow(L0, n);
+           double temperature = grid.AccessToTmp(coords);
+           exp_eqn_rhs += K_*t_inc*exp(-Q/R/temperature);
+           grid.AccessToTmc(coords) = pow(1.0/K1/lambda*pow(exp_eqn_rhs+pow(L0, n),1.0/n), 1.0/n1);  
+         }
+   }
+   else if(dim==3){
+     for(int codx=x0(grid, 0); codx <= x1(grid, 0); codx++)  
+         for(int cody=x0(grid, 1); cody <= x1(grid, 1); cody++) 
+           for(int codz=x0(grid, 2); codz <= x1(grid, 2); codz++){
+             coords[0] = codx;
+             coords[1] = cody;
+             coords[2] = codz;
+             double exp_eqn_rhs = pow(K1*lambda*pow(grid.AccessToTmc(coords), n1), n) - pow(L0, n);
+             double temperature = grid.AccessToTmp(coords);
+             exp_eqn_rhs += K_*t_inc*exp(-Q/R/temperature);
+             grid.AccessToTmc(coords) = pow(1.0/K1/lambda*pow(exp_eqn_rhs+pow(L0, n),1.0/n), 1.0/n1);  
+           }
+   }
+}
+
 template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, int steps_finished, int nthreads, int step_to_nonuniform)
 {
   double maximum_temperature=0.0;
-  double lambda = 1e-3/256;
-  double L_initial=1.844e-5;// after 1000 MC steps, fitted from 256x256 grid
-  double L0=1.1e-6;
-  double K1=0.12336665;
-  double n1=0.52822367;
-  double Q=5.4261e4; //fitted from Gangulee, A. ”Structure of electroplated and vapordeposited copper films. III. Recrystallization and grain growth.” Journal of Applied Physics 45.9 (1974): 3749-3756.
-  double n=2; 
-  double K_=4.622e-9; //fitted from Gangulee, A. ”Structure of electroplated and vapordeposited copper films. III. Recrystallization and grain growth.” Journal of Applied Physics 45.9 (1974): 3749-3756.
-  double R = 8.314;
 
 	#if (!defined MPI_VERSION) && ((defined CCNI) || (defined BGQ))
 	std::cerr<<"Error: MPI is required for CCNI."<<std::endl;
@@ -1333,11 +1375,28 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 
   double tmc_initial = pow(L_initial/K1/lambda,1.0/n1);
   double initial_physical_time = 1.0/K_/exp(-Q/R/maximum_temperature)*(pow(L_initial,n)-pow(L0,n));// for the site with max temp
+
+
 	for (int step=0; step<steps; step++){
-    double tmc_max = 1.0*(steps_finished+step+1-step_to_nonuniform);//tmc_max is max MC time steps counted from the begining of non-uniform temperature field.
-    double current_physical_time = 1.0/K_/exp(-Q/R/maximum_temperature)*(pow(K1*lambda*pow(tmc_max+tmc_initial,n1),n)-pow(L0,n));// isis the physical time counted from when grain size is 0
+
+/* calculate tmc_max
+  double tmc_max;
+	#ifdef MPI_VERSION
+	MPI::COMM_WORLD.Allreduce(&update_timer, &total_update_time, 1, MPI_UNSIGNED_LONG, MPI_SUM);
+	#endif
+ calculate tmc_max*/
+
+    double temp_at_max_tmc = 0.0;
+    double tmc_max_partition = TmcMax(grid, &temp_at_max_tmc); // tmc includes tmc_initial
+    double tmc_max_global = 0.0;
+    MPI::COMM_WORLD.Allreduce(&tmc_max_partition, &tmc_max_global, 1, MPI_DOUBLE, MPI_MAX);
+    if(tmc_max_partition == tmc_max_global){
+      MPI::COMM_WORLD.Bcast(&temp_at_max_tmc, temp_at_max_tmc, MPI_DOUBLE, rank);      
+    }
+    double t_inc = ( pow(K1*lambda*pow(tmc_max_global+1,n1), n) - pow(K1*lambda*pow(tmc_max_global,n1), n) )/K_/exp(-Q/R/temp_at_max_tmc);
+    double t_s = 1.0/K_/exp(-Q/R/temp_at_max_tmc)*(pow(K1*lambda*pow(tmc_max_global,n1),n)-pow(L0,n));// t_s the physical time counted from when grain size is 0
 //    std::cout<<"first "<<pow(L_initial,n)<<"  second  "<<pow(K1*lambda*pow(tmc_max+tmc_initial-1,n1),n)<<std::endl;
-    double t_s = current_physical_time - initial_physical_time;//t_s is the physical time counted from the beginning of simulation.
+    
 		unsigned long start = rdtsc();
     int num_of_sublattices=0;
     if(dim==2) num_of_sublattices = 4; 
@@ -1346,8 +1405,8 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 			for (int i=0; i!= nthreads ; i++) {
 				mat_para[i].sublattice=sublattice;
 				mat_para[i].num_of_points_to_flip=num_of_grids_to_flip[i][sublattice];
-        mat_para[i].t_mcs_max= tmc_max; //tmc_max is the MC time steps counted from the beginning of simulation
-        mat_para[i].t_s= t_s;//t_s is the time counted from the beginning of simulation
+        mat_para[i].t_mcs_max= tmc_max_global; //tmc_max is the MC time steps counted from the beginning of simulation
+        mat_para[i].t_s= t_s;//t_s is the time counted from the when grain size is 0
         for(int k=0; k<dim; k++) mat_para[i].cell_coord[k]=cell_coord[i][k];
 				pthread_create(&p_threads[i], &attr, flip_index_helper<dim>, (void*) &mat_para[i] );
 			}//loop over threads
@@ -1366,6 +1425,9 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
                 #endif
 
 		}//loop over color
+    //after 1 global tmc, update all the local tmc
+    UpdateLocalTmc(grid, t_inc);
+
 		#ifndef SILENT
 		if (rank==0) print_progress(step+1, steps, iterations);
 		#endif

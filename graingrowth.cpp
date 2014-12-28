@@ -38,7 +38,7 @@ unsigned long generate(MMSP::grid<dim,MMSP::sparse<float> >*& grid, int seeds, i
 	#endif
 	unsigned long timer=0;
 	if (dim == 2) {
-		const int edge = 1024;
+		const int edge = 128;
 		int number_of_fields(seeds);
 		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*10.*10.)); // average grain is a disk of radius 10
 		#ifdef MPI_VERSION

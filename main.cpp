@@ -331,6 +331,7 @@ int main(int argc, char* argv[]) {
         if(increment_finished<step_to_nonuniform-1){
 				  comp_cycles = MMSP::update_uniformly(*grid, increment, nthreads);
         }else{
+          
           comp_cycles = MMSP::update(*grid, increment, increment_finished, nthreads, step_to_nonuniform);
         }
         increment_finished += increment;

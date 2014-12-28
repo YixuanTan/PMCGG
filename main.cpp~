@@ -331,6 +331,7 @@ int main(int argc, char* argv[]) {
         if(increment_finished<step_to_nonuniform-1){
 				  comp_cycles = MMSP::update_uniformly(*grid, increment, nthreads);
         }else{
+          
           comp_cycles = MMSP::update(*grid, increment, increment_finished, nthreads, step_to_nonuniform);
         }
         increment_finished += increment;
@@ -423,7 +424,7 @@ int main(int argc, char* argv[]) {
 
 			// perform computation
 			for (int i = iterations_start; i < steps; i += increment) {
-				comp_cycles = MMSP::update_uniformly(*grid, increment, increment_finished, nthreads);
+				comp_cycles = MMSP::update_uniformly(*grid, increment, nthreads);
         increment_finished += increment;
 				unsigned long allcomp = 0;
 				#ifdef MPI_VERSION
@@ -666,7 +667,7 @@ int main(int argc, char* argv[]) {
 
 			// perform computation
 			for (int i = iterations_start; i < steps; i += increment) {
-				MMSP::update_uniformly(grid, increment, increment_finished, nthreads);
+				MMSP::update_uniformly(grid, increment, nthreads);
         increment_finished += increment;
 
 				// generate output filename
