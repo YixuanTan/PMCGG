@@ -1,5 +1,4 @@
 // main.cpp, modified from MMSP.main.hpp
-
 // The user must supply the following in any source
 // code that includes this file:
 //
@@ -61,6 +60,8 @@ int main(int argc, char* argv[]) {
 
 	int nthreads = 1;
   int increment_finished = 0;
+  double physical_time = 0.0;
+
 	unsigned int rank=0;
 	unsigned int np=0;
 	#ifdef MPI_VERSION
@@ -331,8 +332,7 @@ int main(int argc, char* argv[]) {
         if(increment_finished<step_to_nonuniform-1){
 				  comp_cycles = MMSP::update_uniformly(*grid, increment, nthreads);
         }else{
-          
-          comp_cycles = MMSP::update(*grid, increment, increment_finished, nthreads, step_to_nonuniform);
+          comp_cycles = MMSP::update(*grid, increment, increment_finished, nthreads, step_to_nonuniform, physical_time);
         }
         increment_finished += increment;
 				unsigned long allcomp = 0;
@@ -380,6 +380,7 @@ int main(int argc, char* argv[]) {
 				#endif
 				outstr.str("");
 			}
+      if (rank==0) std::cout<<"physical time is "<<physical_time<<std::endl; 
 			if (grid!=NULL) delete grid; grid=NULL;
 		}
 

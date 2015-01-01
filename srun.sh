@@ -7,13 +7,14 @@
 #                                 [infile [outfile] steps [increment]]
 #
 #SBATCH --mail-type=END
-#SBATCH --mail-user=kellet@rpi.edu
-#SBATCH -D /gpfs/u/scratch/PCP4/PCP4kllt/project/
+#SBATCH --mail-user=tany3@rpi.edu
+#SBATCH -D /gpfs/u/home/MMPM/MMPMtany/scratch/1000GridData/
 #SBATCH --partition small
-#SBATCH -t 60
+#SBATCH -t 360
 #SBATCH -N 64
 #SBATCH -n 1024
 #SBATCH --overcommit
-#SBATCH -o /gpfs/u/barn/PCP4/PCP4kllt/project/proj_64_1024.log
+#SBATCH -o /gpfs/u/home/MMPM/MMPMtany/scratch/thinfilm/proj_64_1024.log
 
-srun --runjob-opts="--mapping TEDCBA" /gpfs/u/barn/PCP4/PCP4kllt/project/source/./q_GG.out --nonstop 3 voronoi.000.dat 200 200 4
+srun --runjob-opts="--mapping TEDCBA" /gpfs/u/home/MMPM/MMPMtany/barn/MCgraingrowth/thinfilm/q_GG.out --nonstop 2 ./voronoi.000.dat 100 1 100 4
+

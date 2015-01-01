@@ -18,14 +18,14 @@
 #include"tessellate.hpp"
 #include"output.cpp"
 
-double lambda = 1e-3/256;
-double L_initial=1.844e-5;// after 1000 MC steps, fitted from 256x256 grid
-double L0=1.1e-6;
-double K1=0.12336665;
-double n1=0.52822367;
-double Q=5.4261e4; //fitted from Gangulee, A. ”Structure of electroplated and vapordeposited copper films. III. Recrystallization and grain growth.” Journal of Applied Physics 45.9 (1974): 3749-3756.
-double n=2; 
-double K_=4.622e-9; //fitted from Gangulee, A. ”Structure of electroplated and vapordeposited copper films. III. Recrystallization and grain growth.” Journal of Applied Physics 45.9 (1974): 3749-3756.
+double lambda = 1e-4/1000;
+double L_initial = 3.2e-6; // after 1000 MC steps, fitted from 256x256 grid
+double L0 = 1.1e-6;
+double K1 = 0.12336665;
+double n1 = 0.52822367;
+double Q = 1.413e5; //fitted from Gangulee, A. ”Structure of electroplated and vapordeposited copper films. III. Recrystallization and grain growth.” Journal of Applied Physics 45.9 (1974): 3749-3756.
+double n = 2; 
+double K_ = 3.554e-5; //fitted from Gangulee, A. ”Structure of electroplated and vapordeposited copper films. III. Recrystallization and grain growth.” Journal of Applied Physics 45.9 (1974): 3749-3756.
 double R = 8.314;
 
 struct EulerAngles{
@@ -51,9 +51,9 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
 
 	unsigned long timer=0;
 	if (dim == 2) {
-		const int edge = 256;
+		const int edge = 1000;
 		int number_of_fields(seeds);
-		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*5*5)); /* average grain is a disk of radius XXX
+		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*16*16)); /* average grain is a disk of radius XXX
 , XXX cannot be smaller than 0.1, or BGQ will abort.*/
 		#ifdef MPI_VERSION
 		while (number_of_fields % np) --number_of_fields;
@@ -90,6 +90,28 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
 		MPI::COMM_WORLD.Barrier();
 		#endif
 	}
+/*------------------Initial tmc----------------------*/
+  double tmc_initial = pow(L_initial/K1/lambda,1.0/n1);
+  vector<int> coords (dim,0);
+  if(dim==2){
+    for(int codx=x0(*grid, 0); codx <= x1(*grid, 0); codx++) 
+      for(int cody=x0(*grid, 1); cody <= x1(*grid, 1); cody++){
+        coords[0] = codx;
+        coords[1] = cody;
+        (*grid).AccessToTmc(coords) = tmc_initial;
+      }
+  }
+  else if(dim==3){
+    for(int codx=x0(*grid, 0); codx <= x1(*grid, 0); codx++) 
+      for(int cody=x0(*grid, 1); cody <= x1(*grid, 1); cody++) 
+        for(int codz=x0(*grid, 2); codz <= x1(*grid, 2); codz++){
+          coords[0] = codx;
+          coords[1] = cody;
+          coords[2] = codz;
+          (*grid).AccessToTmc(coords) = tmc_initial;
+        }
+  }
+/*---------------------------------------------------*/
 	return timer;
 }
 
@@ -150,7 +172,7 @@ template <int dim> struct flip_index {
   double* temperature_along_x; 
   EulerAngles* grain_orientations;
   double t_mcs_max;
-  double t_s;
+//  double t_s;
 };
 
 double MaxOfThreeNumber(const double h, const double k, const double l){
@@ -260,7 +282,7 @@ double IncoherentTwinBoundaryEnergy(const double temperature){
 }
  
 bool CheckSixtyDegreeRotation(const double h, const double k, const double l, const double hh, const double kk, const double ll){//hkl is the neighbour, hh kk ll is the site to be/after fliped
-  bool SixtyDegreeRatationAboutTriones = false;
+  bool SixtyDegreeRotationAboutTriones = false;
   double cosine_hkl_abc, cosine_hhkkll_abc, hn1, kn1, ln1, hn2, kn2, ln2, hkl_magnitude, hhkkll_magnitude, abc_magnitude, cosine_two_prjectors;
   const double rotation_tolerance=1.0e-2;  // cos^-1(0.51)=59.34 deg   cos^-1(0.49)=60.66 deg
   for(double a=-1.0; a<=1.0; a+=2.0){
@@ -279,13 +301,13 @@ bool CheckSixtyDegreeRotation(const double h, const double k, const double l, co
         ln2 = ll - hhkkll_magnitude*cosine_hhkkll_abc*c/abc_magnitude;
         cosine_two_prjectors = (hn1*hn2+kn1*kn2+ln1*ln2)/sqrt(hn1*hn1+kn1*kn1+ln1*ln1)/sqrt(hn2*hn2+kn2*kn2+ln2*ln2);
         if(fabs(cosine_two_prjectors-0.5)<rotation_tolerance){
-          SixtyDegreeRatationAboutTriones = true;
-          return SixtyDegreeRatationAboutTriones;
+          SixtyDegreeRotationAboutTriones = true;
+          return SixtyDegreeRotationAboutTriones;
         }
       }
     }
   }
-  return SixtyDegreeRatationAboutTriones;
+  return SixtyDegreeRotationAboutTriones;
 }
 
 template <int dim> void* flip_index_helper_uniformly( void* s )
@@ -391,7 +413,7 @@ template <int dim> void* flip_index_helper_uniformly( void* s )
     //check if inside a grain
     if(number_of_same_neighours==neighbors.size()){//inside a grain
       continue;//continue for
-      }
+    }
     //choose a random neighbor spin
     int spin2 = neighbors[rand()%neighbors.size()];
 
@@ -502,8 +524,8 @@ template <int dim> void* flip_index_helper( void* s )
 //if(rank==0) std::cout<<"num_of_points_to_flip is "<<ss->num_of_points_to_flip<<std::endl;
 //getchar();
     double temperature=((ss->temperature_along_x))[x[0]];
-    double initial_physical_time=1.0/K_/exp(-Q/R/temperature)*(pow(L_initial,n)-pow(L0,n));
-    double t_mc_initial = pow(L_initial/K1/lambda,1.0/n1);
+//    double initial_physical_time=1.0/K_/exp(-Q/R/temperature)*(pow(L_initial,n)-pow(L0,n));
+//    double t_mcs_initial = pow(L_initial/K1/lambda,1.0/n1);
     double t_mcs = (*(ss->grid)).AccessToTmc(x);
     double t_mcs_max = ss->t_mcs_max;
     double site_selection_probability = t_mcs/t_mcs_max;
@@ -1154,7 +1176,7 @@ template <int dim> void UpdateLocalTmc(MMSP::grid<dim, int>& grid, double t_inc)
    }
 }
 
-template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, int steps_finished, int nthreads, int step_to_nonuniform)
+template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, int steps_finished, int nthreads, int step_to_nonuniform, double &physical_time)
 {
   double maximum_temperature=0.0;
 
@@ -1373,10 +1395,6 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
     }// for int j 
   }//for int i
 
-  double tmc_initial = pow(L_initial/K1/lambda,1.0/n1);
-  double initial_physical_time = 1.0/K_/exp(-Q/R/maximum_temperature)*(pow(L_initial,n)-pow(L0,n));// for the site with max temp
-
-
 	for (int step=0; step<steps; step++){
 
 /* calculate tmc_max
@@ -1394,7 +1412,7 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
       MPI::COMM_WORLD.Bcast(&temp_at_max_tmc, temp_at_max_tmc, MPI_DOUBLE, rank);      
     }
     double t_inc = ( pow(K1*lambda*pow(tmc_max_global+1,n1), n) - pow(K1*lambda*pow(tmc_max_global,n1), n) )/K_/exp(-Q/R/temp_at_max_tmc);
-    double t_s = 1.0/K_/exp(-Q/R/temp_at_max_tmc)*(pow(K1*lambda*pow(tmc_max_global,n1),n)-pow(L0,n));// t_s the physical time counted from when grain size is 0
+ //   double t_s = 1.0/K_/exp(-Q/R/temp_at_max_tmc)*(pow(K1*lambda*pow(tmc_max_global,n1),n)-pow(L0,n));// t_s the physical time counted from when grain size is 0
 //    std::cout<<"first "<<pow(L_initial,n)<<"  second  "<<pow(K1*lambda*pow(tmc_max+tmc_initial-1,n1),n)<<std::endl;
     
 		unsigned long start = rdtsc();
@@ -1406,7 +1424,7 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 				mat_para[i].sublattice=sublattice;
 				mat_para[i].num_of_points_to_flip=num_of_grids_to_flip[i][sublattice];
         mat_para[i].t_mcs_max= tmc_max_global; //tmc_max is the MC time steps counted from the beginning of simulation
-        mat_para[i].t_s= t_s;//t_s is the time counted from the when grain size is 0
+ //       mat_para[i].t_s= t_s;//t_s is the time counted from the when grain size is 0
         for(int k=0; k<dim; k++) mat_para[i].cell_coord[k]=cell_coord[i][k];
 				pthread_create(&p_threads[i], &attr, flip_index_helper<dim>, (void*) &mat_para[i] );
 			}//loop over threads
@@ -1427,6 +1445,7 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 		}//loop over color
     //after 1 global tmc, update all the local tmc
     UpdateLocalTmc(grid, t_inc);
+    physical_time += t_inc;
 
 		#ifndef SILENT
 		if (rank==0) print_progress(step+1, steps, iterations);
