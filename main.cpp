@@ -60,7 +60,7 @@ int main(int argc, char* argv[]) {
 
 	int nthreads = 1;
   int increment_finished = 0;
-  double physical_time = 0.0;
+  long double physical_time = 0.0;
 
 	unsigned int rank=0;
 	unsigned int np=0;

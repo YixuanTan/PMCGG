@@ -18,8 +18,8 @@
 #include"tessellate.hpp"
 #include"output.cpp"
 
-double lambda = 1e-4/1000;
-double L_initial = 3.2e-6; // after 1000 MC steps, fitted from 256x256 grid
+double lambda = 1e-4/32;
+double L_initial = 1.2e-6; 
 double L0 = 1.1e-6;
 double K1 = 0.12336665;
 double n1 = 0.52822367;
@@ -51,9 +51,9 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
 
 	unsigned long timer=0;
 	if (dim == 2) {
-		const int edge = 1000;
+		const int edge = 32;
 		int number_of_fields(seeds);
-		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*16*16)); /* average grain is a disk of radius XXX
+		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*5*5)); /* average grain is a disk of radius XXX
 , XXX cannot be smaller than 0.1, or BGQ will abort.*/
 		#ifdef MPI_VERSION
 		while (number_of_fields % np) --number_of_fields;
@@ -73,7 +73,7 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
 		MPI::COMM_WORLD.Barrier();
 		#endif
 	} else if (dim == 3) {
-		const int edge = 512;
+		const int edge = 32;
 		int number_of_fields(seeds);
 		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge*edge)/(4./3*M_PI*10.*10.*10.)); // Average grain is a sphere of radius 10 voxels
 		#ifdef MPI_VERSION
@@ -99,6 +99,7 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
         coords[0] = codx;
         coords[1] = cody;
         (*grid).AccessToTmc(coords) = tmc_initial;
+        (*grid).AccessToTmp(coords) = 273.0;
       }
   }
   else if(dim==3){
@@ -109,8 +110,10 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
           coords[1] = cody;
           coords[2] = codz;
           (*grid).AccessToTmc(coords) = tmc_initial;
+          (*grid).AccessToTmp(coords) = 273.0;
         }
   }
+  
 /*---------------------------------------------------*/
 	return timer;
 }
@@ -169,8 +172,8 @@ template <int dim> struct flip_index {
   int num_of_points_to_flip;
   int cell_coord[dim];
   int lattice_cells_each_dimension[dim];
-  double* temperature_along_x; 
-  EulerAngles* grain_orientations;
+//  double* temperature_along_x; 
+//  EulerAngles* grain_orientations;
   double t_mcs_max;
 //  double t_s;
 };
@@ -523,7 +526,7 @@ template <int dim> void* flip_index_helper( void* s )
     int rank = MPI::COMM_WORLD.Get_rank();
 //if(rank==0) std::cout<<"num_of_points_to_flip is "<<ss->num_of_points_to_flip<<std::endl;
 //getchar();
-    double temperature=((ss->temperature_along_x))[x[0]];
+    double temperature=(*(ss->grid)).AccessToTmp(x);
 //    double initial_physical_time=1.0/K_/exp(-Q/R/temperature)*(pow(L_initial,n)-pow(L0,n));
 //    double t_mcs_initial = pow(L_initial/K1/lambda,1.0/n1);
     double t_mcs = (*(ss->grid)).AccessToTmc(x);
@@ -820,7 +823,7 @@ template <int dim> void* flip_index_helper( void* s )
       }
 			// attempt a spin flip
 			double r = double(rand())/double(RAND_MAX);
-      kT = 1.3806488e-23*((ss->temperature_along_x))[x[0]];
+      kT = 1.3806488e-23*temperature;
 //	      int rank = MPI::COMM_WORLD.Get_rank();
 			if (dE <= 0.0) {
         (*(ss->grid))(x) = spin2;
@@ -883,7 +886,7 @@ template <int dim> unsigned long update_uniformly(MMSP::grid<dim, int>& grid, in
 	#endif
 
 /*
-  int edge = 512;
+  int edge = 32;
   int number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*10.*10.)); // average grain is a disk of radius 10
   #ifdef MPI_VERSION
 	while (number_of_fields % np) --number_of_fields;
@@ -1129,6 +1132,10 @@ template <int dim> double TmcMax(MMSP::grid<dim, int>& grid, double *temp_at_max
          for(int cody=x0(grid, 1); cody <= x1(grid, 1); cody++){
            coords[0] = codx;
            coords[1] = cody;
+           if(grid.AccessToTmc(coords) > 1000){
+             std::cout<<coords[0]<<"  "<<coords[1]<<";   "<< grid.AccessToTmc(coords)  <<std::endl;
+             getchar();
+           }
            if(grid.AccessToTmc(coords) > tmc_max)
              tmc_max = grid.AccessToTmc(coords);
          }
@@ -1148,17 +1155,20 @@ template <int dim> double TmcMax(MMSP::grid<dim, int>& grid, double *temp_at_max
    return tmc_max;
 }
 
-template <int dim> void UpdateLocalTmc(MMSP::grid<dim, int>& grid, double t_inc){
+template <int dim> void UpdateLocalTmc(MMSP::grid<dim, int>& grid, long double t_inc){
    vector<int> coords (dim,0);
    if(dim==2){
        for(int codx=x0(grid, 0); codx <= x1(grid, 0); codx++) 
          for(int cody=x0(grid, 1); cody <= x1(grid, 1); cody++){
            coords[0] = codx;
            coords[1] = cody;
-           double exp_eqn_rhs = pow(K1*lambda*pow(grid.AccessToTmc(coords), n1), n) - pow(L0, n);
-           double temperature = grid.AccessToTmp(coords);
+           long double exp_eqn_rhs = pow(K1*lambda*pow(grid.AccessToTmc(coords), n1), n) - pow(L0, n);
+           long double temperature = grid.AccessToTmp(coords);
            exp_eqn_rhs += K_*t_inc*exp(-Q/R/temperature);
+           int rank=MPI::COMM_WORLD.Get_rank();
+if(rank==0) std::cout<<"t_inc is "<<t_inc<<"  temperature is "<<temperature<<"  before grid.AccessToTmc(coords)  is "<<grid.AccessToTmc(coords)<<std::endl;
            grid.AccessToTmc(coords) = pow(1.0/K1/lambda*pow(exp_eqn_rhs+pow(L0, n),1.0/n), 1.0/n1);  
+             if(rank==0) std::cout<<"after grid.AccessToTmc(coords)  is "<<grid.AccessToTmc(coords)<<std::endl;
          }
    }
    else if(dim==3){
@@ -1168,18 +1178,38 @@ template <int dim> void UpdateLocalTmc(MMSP::grid<dim, int>& grid, double t_inc)
              coords[0] = codx;
              coords[1] = cody;
              coords[2] = codz;
-             double exp_eqn_rhs = pow(K1*lambda*pow(grid.AccessToTmc(coords), n1), n) - pow(L0, n);
-             double temperature = grid.AccessToTmp(coords);
+             long double exp_eqn_rhs = pow(K1*lambda*pow(grid.AccessToTmc(coords), n1), n) - pow(L0, n);
+             long double temperature = grid.AccessToTmp(coords);
              exp_eqn_rhs += K_*t_inc*exp(-Q/R/temperature);
              grid.AccessToTmc(coords) = pow(1.0/K1/lambda*pow(exp_eqn_rhs+pow(L0, n),1.0/n), 1.0/n1);  
            }
    }
 }
 
-template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, int steps_finished, int nthreads, int step_to_nonuniform, double &physical_time)
-{
-  double maximum_temperature=0.0;
+template <int dim> void UpdateLocalTmp(MMSP::grid<dim, int>& grid, long double physical_time){
+   vector<int> coords (dim,0);
+   if(dim==2){
+       for(int codx=x0(grid, 0); codx <= x1(grid, 0); codx++) 
+         for(int cody=x0(grid, 1); cody <= x1(grid, 1); cody++){
+           coords[0] = codx;
+           coords[1] = cody;
+           grid.AccessToTmp(coords) = 473 + 273.0*sin(3.14/32*codx + 3.14/(1.0e5)*physical_time);
+         }
+   }
+   else if(dim==3){
+     for(int codx=x0(grid, 0); codx <= x1(grid, 0); codx++)  
+         for(int cody=x0(grid, 1); cody <= x1(grid, 1); cody++) 
+           for(int codz=x0(grid, 2); codz <= x1(grid, 2); codz++){
+             coords[0] = codx;
+             coords[1] = cody;
+             coords[2] = codz;
+             grid.AccessToTmp(coords) = 473 + 273.0*sin(3.14/32*codx + 3.14/(1.0e5)*physical_time);
+           }
+   }
+}
 
+template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, int steps_finished, int nthreads, int step_to_nonuniform, long double &physical_time)
+{
 	#if (!defined MPI_VERSION) && ((defined CCNI) || (defined BGQ))
 	std::cerr<<"Error: MPI is required for CCNI."<<std::endl;
 	exit(1);
@@ -1205,7 +1235,7 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 	#endif
 //	ghostswap(grid); 
 /*
-  int edge = 512;
+  int edge = 32;
   int number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*10.*10.)); // average grain is a disk of radius 10
   #ifdef MPI_VERSION
 	while (number_of_fields % np) --number_of_fields;
@@ -1250,18 +1280,13 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
     exit(0);
   }
   int model_dimension=(g1(grid, 0)-g0(grid, 0)+1);
-  double *temperature_along_x = new double[model_dimension];
+//  double *temperature_along_x = new double[model_dimension];
 
-  if(rank==0){
-    ReadTemperature(temperature_along_x, model_dimension);
-  }
-	MPI::COMM_WORLD.Barrier();
-  MPI::COMM_WORLD.Bcast(temperature_along_x, model_dimension, MPI_DOUBLE, 0);
-  for(int i=0; i<model_dimension; i++){
-    if(maximum_temperature<temperature_along_x[i]){
-      maximum_temperature = temperature_along_x[i];
-    }
-  }
+//  if(rank==0){
+//    ReadTemperature(temperature_along_x, model_dimension);
+//  }
+//	MPI::COMM_WORLD.Barrier();
+//  MPI::COMM_WORLD.Bcast(temperature_along_x, model_dimension, MPI_DOUBLE, 0);
 
 	vector<int> x (dim,0);
 	vector<int> x_prim (dim,0);
@@ -1322,7 +1347,7 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
     for(int k=0; k<dim; k++) 
       mat_para[i].lattice_cells_each_dimension[k]=lattice_cells_each_dimension[k];
 
-    mat_para[i].temperature_along_x = temperature_along_x;
+//    mat_para[i].temperature_along_x = temperature_along_x;
 //    mat_para[i].grain_orientations = grain_orientations;
 
     for(int j=0; j<mat_para[i].num_of_cells_in_thread; j++){
@@ -1406,15 +1431,23 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 
     double temp_at_max_tmc = 0.0;
     double tmc_max_partition = TmcMax(grid, &temp_at_max_tmc); // tmc includes tmc_initial
+    MPI::COMM_WORLD.Barrier();
     double tmc_max_global = 0.0;
+if(rank==0) std::cout<<"temp_at_max_tmc is "<<temp_at_max_tmc<<std::endl;
+    MPI::COMM_WORLD.Barrier();
     MPI::COMM_WORLD.Allreduce(&tmc_max_partition, &tmc_max_global, 1, MPI_DOUBLE, MPI_MAX);
-    if(tmc_max_partition == tmc_max_global){
-      MPI::COMM_WORLD.Bcast(&temp_at_max_tmc, temp_at_max_tmc, MPI_DOUBLE, rank);      
+    MPI::COMM_WORLD.Barrier();
+
+//if(rank==0) std::cout<<"steps_finished is "<<steps_finished<<"step_to_nonuniform is "<<step_to_nonuniform<<std::endl;
+    std::cout<<"at rank "<<rank << "  tmc_max_partition is "<<tmc_max_partition<<"tmc_max_global is "<<tmc_max_global<<std::endl;
+
+    if(steps_finished != step_to_nonuniform && tmc_max_partition == tmc_max_global){
+      MPI::COMM_WORLD.Bcast(&temp_at_max_tmc, 1, MPI_DOUBLE, rank);
     }
+    MPI::COMM_WORLD.Barrier();
+//    if(rank==2) std::cout<<"temp_at_max_tmc is "<<temp_at_max_tmc<<std::endl;
     double t_inc = ( pow(K1*lambda*pow(tmc_max_global+1,n1), n) - pow(K1*lambda*pow(tmc_max_global,n1), n) )/K_/exp(-Q/R/temp_at_max_tmc);
- //   double t_s = 1.0/K_/exp(-Q/R/temp_at_max_tmc)*(pow(K1*lambda*pow(tmc_max_global,n1),n)-pow(L0,n));// t_s the physical time counted from when grain size is 0
-//    std::cout<<"first "<<pow(L_initial,n)<<"  second  "<<pow(K1*lambda*pow(tmc_max+tmc_initial-1,n1),n)<<std::endl;
-    
+
 		unsigned long start = rdtsc();
     int num_of_sublattices=0;
     if(dim==2) num_of_sublattices = 4; 
@@ -1423,8 +1456,7 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 			for (int i=0; i!= nthreads ; i++) {
 				mat_para[i].sublattice=sublattice;
 				mat_para[i].num_of_points_to_flip=num_of_grids_to_flip[i][sublattice];
-        mat_para[i].t_mcs_max= tmc_max_global; //tmc_max is the MC time steps counted from the beginning of simulation
- //       mat_para[i].t_s= t_s;//t_s is the time counted from the when grain size is 0
+        mat_para[i].t_mcs_max = tmc_max_global; //tmc_max is the MC time steps counted from the beginning of simulation
         for(int k=0; k<dim; k++) mat_para[i].cell_coord[k]=cell_coord[i][k];
 				pthread_create(&p_threads[i], &attr, flip_index_helper<dim>, (void*) &mat_para[i] );
 			}//loop over threads
@@ -1441,11 +1473,15 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
             #ifdef MPI_VERSION
 			MPI::COMM_WORLD.Barrier();
                 #endif
-
 		}//loop over color
     //after 1 global tmc, update all the local tmc
+	  MPI::COMM_WORLD.Barrier();
     UpdateLocalTmc(grid, t_inc);
     physical_time += t_inc;
+	  MPI::COMM_WORLD.Barrier();
+//    if(rank==0) std::cout<<"physical_time is "<< physical_time << ";  t_inc is" << t_inc << std::endl; 
+    UpdateLocalTmp(grid, physical_time);
+	  MPI::COMM_WORLD.Barrier();
 
 		#ifndef SILENT
 		if (rank==0) print_progress(step+1, steps, iterations);
@@ -1468,8 +1504,8 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
   cell_coord=NULL;
 //	delete [] grain_orientations;
 //	grain_orientations=NULL;
-	delete [] temperature_along_x;
-	temperature_along_x=NULL;
+//	delete [] temperature_along_x;
+//	temperature_along_x=NULL;
 	delete [] p_threads;
 	p_threads=NULL;
 	delete [] mat_para;
@@ -1478,6 +1514,7 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 	unsigned long total_update_time=update_timer;
 	#ifdef MPI_VERSION
 	MPI::COMM_WORLD.Allreduce(&update_timer, &total_update_time, 1, MPI_UNSIGNED_LONG, MPI_SUM);
+  MPI::COMM_WORLD.Barrier();
 	#endif
 	return total_update_time/np; // average update time
 }
