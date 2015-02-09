@@ -23,7 +23,7 @@ double output_bgq(MMSP::grid<dim,T>& GRID, char* filename, int nthreads=1)
 	MPI_Request request;
 	MPI_Status status;
 	int mpi_err = 0;
-
+if (rank==0) std::cout<<"cci1111 "<<std::endl;
 	// Read filesystem block size (using statvfs). Default to 4096 B.
 	struct statvfs buf;
 	const unsigned long blocksize = (statvfs(".", &buf) == -1)?4096:buf.f_bsize;
@@ -71,19 +71,22 @@ double output_bgq(MMSP::grid<dim,T>& GRID, char* filename, int nthreads=1)
 		memcpy(headbuffer+header_offset, reinterpret_cast<const char*>(&np), sizeof(np));
 		header_offset+=sizeof(rank);
 	}
-	MPI::COMM_WORLD.Bcast(&header_offset, 1, MPI_UNSIGNED_LONG, 0); // broadcast header size from rank 0
+if (rank==0) std::cout<<"cci2222 "<<std::endl;
+	unsigned long header_offset_send = header_offset;
+	MPI::COMM_WORLD.Allreduce(&header_offset_send, &header_offset, 1, MPI_UNSIGNED_LONG, MPI_MAX);
+	//	MPI::COMM_WORLD.Bcast(&header_offset, 1, MPI_UNSIGNED_LONG, 0); // broadcast header size from rank 0
 	#ifdef DEBUG
 	if (rank==0) std::cout<<"Prepared file header."<<std::endl;
 	#endif
 	MPI::COMM_WORLD.Barrier();
-
+if (rank==0) std::cout<<"cci3333 "<<std::endl;
 	// Compute file offsets based on buffer sizes
 	datasizes = new unsigned long[np];
 	MPI::COMM_WORLD.Allgather(&size, 1, MPI_UNSIGNED_LONG, datasizes, 1, MPI_UNSIGNED_LONG);
 	#ifdef DEBUG
 	if (rank==0) std::cout<<"Synchronized data sizes."<<std::endl;
 	#endif
-
+if (rank==0) std::cout<<"cci4444 "<<std::endl;
 	// Determine disk space requirement
 	unsigned long filesize=header_offset;
 	for (unsigned int i=0; i<np; ++i) filesize+=datasizes[i];
@@ -100,7 +103,7 @@ double output_bgq(MMSP::grid<dim,T>& GRID, char* filename, int nthreads=1)
 	assert(datasizes[rank]==size);
 	if (rank==0) std::cout<<"  Synchronized data offsets on "<<np<<" ranks. Total size: "<<offsets[np-1]+datasizes[np-1]<<" B."<<std::endl;
 	#endif
-
+if (rank==0) std::cout<<"cci55555 "<<std::endl;
 	// Calculate number of  writers & write size
 	unsigned long blocks = filesize/blocksize;
 	while (blocks*blocksize<filesize)	++blocks;
@@ -112,7 +115,7 @@ double output_bgq(MMSP::grid<dim,T>& GRID, char* filename, int nthreads=1)
 	#ifdef DEBUG
 	if (rank==0) std::cout<<"  Preparing "<<nwriters<<" aggregator/writers; writesize is "<<writesize<<" B, with "<<excessblocks<<" excess blocks."<<std::endl;
 	#endif
-
+if (rank==0) std::cout<<"cci66666 "<<std::endl;
 	// Scan to determine which ranks are writers
 	writeranks = new unsigned int[nwriters+1];
 	aoffsets = new unsigned long[nwriters];
@@ -129,7 +132,7 @@ double output_bgq(MMSP::grid<dim,T>& GRID, char* filename, int nthreads=1)
 			isWriter=true;
 		temprank++;
 	}
-
+if (rank==0) std::cout<<"cci77777 "<<std::endl;
 	// Determine which rank to send data to
 	unsigned int prevwriter=nwriters, nextwriter=0;
 	if (rank==0) {
@@ -144,7 +147,7 @@ double output_bgq(MMSP::grid<dim,T>& GRID, char* filename, int nthreads=1)
 		while (writeranks[nextwriter]<=rank)
 			++nextwriter;
 	}
-
+if (rank==0) std::cout<<"cci88888 "<<std::endl;
 	unsigned long ws = writesize;
 	if (nextwriter<=excessblocks)
 		ws+=blocksize;
@@ -158,11 +161,12 @@ double output_bgq(MMSP::grid<dim,T>& GRID, char* filename, int nthreads=1)
 		if (deficiency>datasizes[rank])
 			deficiency=datasizes[rank];
 	}
+if (rank==0) std::cout<<"cci999999 "<<std::endl;
 	// Collect block misalignments
 	misalignments = new unsigned long[np];
 	MPI::COMM_WORLD.Barrier();
 	MPI::COMM_WORLD.Allgather(&deficiency, 1, MPI_UNSIGNED_LONG, misalignments, 1, MPI_UNSIGNED_LONG);
-
+if (rank==0) std::cout<<"cci121212 "<<std::endl;
 	#ifdef DEBUG
 	if (datasizes[rank]-deficiency>ws)
 		std::fprintf(stderr, "Error on Rank %u, alignment: buffered %lu B > writesize %lu B.\n", rank, datasizes[rank]-deficiency, ws);
@@ -179,7 +183,7 @@ double output_bgq(MMSP::grid<dim,T>& GRID, char* filename, int nthreads=1)
 		if (rank>0 && writeranks[prevwriter+1]!=rank)
 			std::fprintf(stderr, "Error on Rank %u, writer ID: %u != %u\n", rank, writeranks[prevwriter+1], rank);
 		#endif
-
+if (rank==0) std::cout<<"cci13131313 "<<std::endl;
 		// Copy local data into filebuffer
 		filebuffer = new char[ws];
 		char* p = filebuffer;
@@ -194,7 +198,7 @@ double output_bgq(MMSP::grid<dim,T>& GRID, char* filename, int nthreads=1)
 		char* q=databuffer+misalignments[rank];
 		memcpy(p, q, datasizes[rank]-misalignments[rank]);
 		p+=datasizes[rank]-misalignments[rank];
-
+if (rank==0) std::cout<<"cci14141414 "<<std::endl;
 		// Recv remote data into filebuffer
 		if (silentranks>0) {
 			recvrequests = new MPI_Request[silentranks];
@@ -226,6 +230,7 @@ double output_bgq(MMSP::grid<dim,T>& GRID, char* filename, int nthreads=1)
 			MPI_Isend(q, misalignments[rank], MPI_CHAR, writeranks[prevwriter], rank, MPI::COMM_WORLD, &sendrequest);
 		}
 	}
+if (rank==0) std::cout<<"cci17171717 "<<std::endl;
 	if (misalignments[rank] >= datasizes[rank]) {
 		assert(writeranks[prevwriter]<rank && writeranks[prevwriter]<np);
 		MPI_Isend(databuffer, datasizes[rank], MPI_CHAR, writeranks[prevwriter], rank, MPI::COMM_WORLD, &sendrequest);
@@ -266,7 +271,7 @@ double output_bgq(MMSP::grid<dim,T>& GRID, char* filename, int nthreads=1)
 		MPI_Error_string(mpi_err, error_string, &length_of_error_string);
 		fprintf(stderr, "%3d: %s\n", rank, error_string);
 	}
-
+if (rank==0) std::cout<<"cci19191919 "<<std::endl;
 	// Write to disk
 	if (filebuffer!=NULL) {
 		unsigned int w=0;
@@ -285,7 +290,7 @@ double output_bgq(MMSP::grid<dim,T>& GRID, char* filename, int nthreads=1)
 	} else {
 		ws = 0; // not a writer
 	}
-
+if (rank==0) std::cout<<"cci101010101 "<<std::endl;
 	MPI::COMM_WORLD.Barrier();
 	MPI_File_close(&output);
 	writecycles = rdtsc() - writecycles;
@@ -375,7 +380,9 @@ double input_bgq(MMSP::grid<dim,T>& GRID, char* filename, int nthreads=1)
 		memcpy(headbuffer+header_offset, reinterpret_cast<const char*>(&np), sizeof(np));
 		header_offset+=sizeof(rank);
 	}
-	MPI::COMM_WORLD.Bcast(&header_offset, 1, MPI_UNSIGNED_LONG, 0); // broadcast header size from rank 0
+	unsigned long header_offset_send = header_offset;
+	MPI::COMM_WORLD.Allreduce(&header_offset_send, &header_offset, 1, MPI_UNSIGNED_LONG, MPI_MAX);
+	//	MPI::COMM_WORLD.Bcast(&header_offset, 1, MPI_UNSIGNED_LONG, 0); // broadcast header size from rank 0
 	#ifdef DEBUG
 	if (rank==0) std::cout<<"Prepared file header."<<std::endl;
 	#endif
