@@ -131,6 +131,7 @@ void * exact_voronoi_threads_helper( void* s )
 					min_identity=identity;
 				}
 				// Check coordinates across periodic boundary
+/*
 				for (int d=0; d<dim; d++)
 					check_boundary(seed[d], x0((*(ss->grid)),d), x1(*(ss->grid),d), b0(*(ss->grid),d), b1(*(ss->grid),d));
 				if (seed==(*(ss->seeds))[rank][s]) continue;
@@ -139,6 +140,7 @@ void * exact_voronoi_threads_helper( void* s )
 					min_distance=distance;
 					min_identity=identity;
 				}
+*/
 			}
 		}
 		set((*(ss->grid))(n), min_identity) = 1.;
@@ -269,6 +271,7 @@ void * exact_voronoi_threads_helper( void* s )
 					min_identity=identity;
 				}
 				// Check coordinates across periodic boundary
+/*
 				for (int d=0; d<dim; d++)
 					check_boundary(seed[d], x0((*(ss->grid)),d), x1(*(ss->grid),d), b0(*(ss->grid),d), b1(*(ss->grid),d));
 				if (seed==(*(ss->seeds))[rank][s]) continue;
@@ -277,6 +280,7 @@ void * exact_voronoi_threads_helper( void* s )
 					min_distance=distance;
 					min_identity=identity;
 				}
+*/
 			}
 		}
 		(*(ss->grid))(n) = static_cast<T>(min_identity);
@@ -452,6 +456,7 @@ unsigned long exact_voronoi(MMSP::grid<dim, sparse<T> >& grid, const std::vector
 					min_identity=identity;
 				}
 				// Check coordinates across periodic boundary
+/*
 				for (int d=0; d<dim; d++) check_boundary(seed[d], x0(grid,d), x1(grid,d), b0(grid,d), b1(grid,d));
 				if (seed==seeds[rank][s]) continue;
 				distance=radius<dim,int>(x,seed);
@@ -459,6 +464,7 @@ unsigned long exact_voronoi(MMSP::grid<dim, sparse<T> >& grid, const std::vector
 					min_distance=distance;
 					min_identity=identity;
 				}
+*/
 			}
 		}
 		set(grid(n), min_identity) = 1.;
@@ -544,6 +550,7 @@ unsigned long exact_voronoi(MMSP::grid<dim,T>& grid, const std::vector<std::vect
 					min_identity=identity;
 				}
 				// Check coordinates across periodic boundary
+/*
 				for (int d=0; d<dim; d++) check_boundary(seed[d], x0(grid,d), x1(grid,d), b0(grid,d), b1(grid,d));
 				if (seed==seeds[rank][s]) continue;
 				distance=radius<dim,int>(x,seed);
@@ -551,6 +558,7 @@ unsigned long exact_voronoi(MMSP::grid<dim,T>& grid, const std::vector<std::vect
 					min_distance=distance;
 					min_identity=identity;
 				}
+*/
 			}
 		}
 		grid(n) = reinterpret_cast<int>(min_identity);

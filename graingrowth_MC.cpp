@@ -51,7 +51,7 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
 
 	unsigned long timer=0;
 	if (dim == 2) {
-		const int edge = 512;
+		const int edge = 1000;
 		int number_of_fields(seeds);
 		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*16*16)); /* average grain is a disk of radius XXX
 , XXX cannot be smaller than 0.1, or BGQ will abort.*/
@@ -73,7 +73,7 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
 		MPI::COMM_WORLD.Barrier();
 		#endif
 	} else if (dim == 3) {
-		const int edge = 512;
+		const int edge = 1000;
 		int number_of_fields(seeds);
 		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge*edge)/(4./3*M_PI*10.*10.*10.)); // Average grain is a sphere of radius 10 voxels
 		#ifdef MPI_VERSION
@@ -512,7 +512,7 @@ template <int dim> void* flip_index_helper( void* s )
 
     bool site_out_of_domain = false;
     for(int i=0; i<dim; i++){
-      if(x[i]<x0(*(ss->grid), i) || x[i]>x1(*(ss->grid), i)){
+      if(x[i]<x0(*(ss->grid), i) || x[i]>=x1(*(ss->grid), i)){
 //      if(x[i]<x0(*(ss->grid), i) || x[i]>x1(*(ss->grid), i)-1){
         site_out_of_domain = true;
         break;//break from the for int i loop
@@ -551,8 +551,10 @@ template <int dim> void* flip_index_helper( void* s )
           if(!(i==0 && j==0)){
             r[0] = x[0] + i;
             r[1] = x[1] + j;
-            int spin = (*(ss->grid))(r);
+            if(r[0]<g0(*(ss->grid), 0) || r[0]>=g1(*(ss->grid), 0) || r[1]<g0(*(ss->grid), 1) || r[1]>=g1(*(ss->grid), 1) )
+              continue;// neighbour outside the global boundary, skip it. 
 
+            int spin = (*(ss->grid))(r);
             neighbors.push_back(spin);
             if(spin==spin1) 
               number_of_same_neighours++;
@@ -567,6 +569,10 @@ template <int dim> void* flip_index_helper( void* s )
 				      r[0] = x[0] + i;
 				      r[1] = x[1] + j;
 				      r[2] = x[2] + k;
+
+              if(r[0]<g0(*(ss->grid), 0) || r[0]>g1(*(ss->grid), 0) || r[1]<g0(*(ss->grid), 1) || r[1]>g1(*(ss->grid), 1) ||
+                 r[2]<g0(*(ss->grid), 2) || r[2]>g1(*(ss->grid), 2))
+                continue;// neighbour outside the global boundary, skip it. 
 				      int spin = (*(ss->grid))(r);
               neighbors.push_back(spin);
               if(spin==spin1) 
@@ -605,7 +611,9 @@ template <int dim> void* flip_index_helper( void* s )
             if(!(i==0 && j==0)){
   					  r[0] = x[0] + i;
 	  				  r[1] = x[1] + j;
-	
+
+	            if(r[0]<g0(*(ss->grid), 0) || r[0]>=g1(*(ss->grid), 0) || r[1]<g0(*(ss->grid), 1) || r[1]>=g1(*(ss->grid), 1) )
+              continue;// neighbour outside the global boundary, skip it. 
     				  int spin = (*(ss->grid))(r);
 				  dE += 1.0/2*((spin!=spin2)-(spin!=spin1));
 				    //				                dE += 1.0/2*((spin!=spin2)-(spin!=spin1))*film_thickness*LargeAngleGrainBoundaryEnergy(temperature); // grain boundary energy  
@@ -814,6 +822,10 @@ template <int dim> void* flip_index_helper( void* s )
 					      r[0] = x[0] + i;
 					      r[1] = x[1] + j;
 					      r[2] = x[2] + k;
+
+                if(r[0]<g0(*(ss->grid), 0) || r[0]>g1(*(ss->grid), 0) || r[1]<g0(*(ss->grid), 1) || r[1]>g1(*(ss->grid), 1) ||
+                   r[2]<g0(*(ss->grid), 2) || r[2]>g1(*(ss->grid), 2))
+                  continue;// neighbour outside the global boundary, skip it.
 					      int spin = (*(ss->grid))(r);
 					      dE += (spin!=spin2)-(spin!=spin1);
               }
@@ -886,7 +898,7 @@ template <int dim> unsigned long update_uniformly(MMSP::grid<dim, int>& grid, in
 	#endif
 
 /*
-  int edge = 512;
+  int edge = 1000;
   int number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*10.*10.)); // average grain is a disk of radius 10
   #ifdef MPI_VERSION
 	while (number_of_fields % np) --number_of_fields;
@@ -1193,17 +1205,21 @@ template <int dim> void UpdateLocalTmp(MMSP::grid<dim, int>& grid, long double p
          for(int cody=x0(grid, 1); cody <= x1(grid, 1); cody++){
            coords[0] = codx;
            coords[1] = cody;
-/*-----------------------*/
-if(codx<=0.25*512)
+if(codx<=0.5*1000)
+  grid.AccessToTmp(coords) = 473; 
+else
+  grid.AccessToTmp(coords) = 673; 
+/*-----------------------
+if(codx<=0.25*1000)
   grid.AccessToTmp(coords) = 100; 
-else if(0.25*512<codx<=0.5*512)
+else if(0.25*1000<codx<=0.5*1000)
   grid.AccessToTmp(coords) = 300; 
-else if(0.5*512<codx<=0.75*512)
+else if(0.5*1000<codx<=0.75*1000)
   grid.AccessToTmp(coords) = 500; 
-else if(0.75*512<codx<=512)
+else if(0.75*1000<codx<=1000)
   grid.AccessToTmp(coords) = 700; 
-/*-----------------------*/
-//           grid.AccessToTmp(coords) = 473 + 273.0*sin(3.14/512*codx + 3.14/(1.0e5)*physical_time);
+-----------------------*/
+//           grid.AccessToTmp(coords) = 473 + 273.0*sin(3.14/1000*codx + 3.14/(1.0e5)*physical_time);
          }
    }
    else if(dim==3){
@@ -1213,7 +1229,7 @@ else if(0.75*512<codx<=512)
              coords[0] = codx;
              coords[1] = cody;
              coords[2] = codz;
-             grid.AccessToTmp(coords) = 473 + 273.0*sin(3.14/512*codx + 3.14/(1.0e5)*physical_time);
+             grid.AccessToTmp(coords) = 473 + 273.0*sin(3.14/1000*codx + 3.14/(1.0e5)*physical_time);
            }
    }
 }
@@ -1245,7 +1261,7 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 	#endif
 //	ghostswap(grid); 
 /*
-  int edge = 512;
+  int edge = 1000;
   int number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*10.*10.)); // average grain is a disk of radius 10
   #ifdef MPI_VERSION
 	while (number_of_fields % np) --number_of_fields;
