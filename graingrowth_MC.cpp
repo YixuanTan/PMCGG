@@ -1206,7 +1206,7 @@ template <int dim> void UpdateLocalTmp(MMSP::grid<dim, int>& grid, long double p
            coords[0] = codx;
            coords[1] = cody;
 if(codx<=0.5*1000)
-  grid.AccessToTmp(coords) = 473; 
+  grid.AccessToTmp(coords) = 273; 
 else
   grid.AccessToTmp(coords) = 673; 
 /*-----------------------
@@ -1467,9 +1467,10 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 //if(rank==0) std::cout<<"steps_finished is "<<steps_finished<<"step_to_nonuniform is "<<step_to_nonuniform<<std::endl;
 //    std::cout<<"at rank "<<rank << "  tmc_max_partition is "<<tmc_max_partition<<"tmc_max_global is "<<tmc_max_global<<std::endl;
 
-    if(steps_finished != step_to_nonuniform && tmc_max_partition == tmc_max_global){
-      MPI::COMM_WORLD.Bcast(&temp_at_max_tmc, 1, MPI_DOUBLE, rank);
-    }
+    double local_temp_at_max_tmc = temp_at_max_tmc;
+    if(tmc_max_partition != tmc_max_global)
+      local_temp_at_max_tmc = 0.0;
+    MPI::COMM_WORLD.Allreduce(&local_temp_at_max_tmc, &temp_at_max_tmc, 1, MPI_DOUBLE, MPI_MAX);
     MPI::COMM_WORLD.Barrier();
 //    if(rank==2) std::cout<<"temp_at_max_tmc is "<<temp_at_max_tmc<<std::endl;
     double t_inc = ( pow(K1*lambda*pow(tmc_max_global+1,n1), n) - pow(K1*lambda*pow(tmc_max_global,n1), n) )/K_/exp(-Q/R/temp_at_max_tmc);
