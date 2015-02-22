@@ -18,7 +18,7 @@
 #include"tessellate.hpp"
 #include"output.cpp"
 
-double lambda = 1e-4/128;
+double lambda = 5e-4/500;
 double L_initial = 3.2e-6; 
 double L0 = 1.1e-6;
 double K1 = 0.12336665;
@@ -51,9 +51,9 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
 
 	unsigned long timer=0;
 	if (dim == 2) {
-		const int edge = 128;
+		const int edge = 250;
 		int number_of_fields(seeds);
-		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*1*1)); /* average grain is a disk of radius XXX
+		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*1.6*1.6)); /* average grain is a disk of radius XXX
 , XXX cannot be smaller than 0.1, or BGQ will abort.*/
 		#ifdef MPI_VERSION
 		while (number_of_fields % np) --number_of_fields; 
@@ -73,7 +73,7 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
 		MPI::COMM_WORLD.Barrier();
 		#endif
 	} else if (dim == 3) {
-		const int edge = 128;
+		const int edge = 250;
 		int number_of_fields(seeds);
 		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge*edge)/(4./3*M_PI*10.*10.*10.)); // Average grain is a sphere of radius 10 voxels
 		#ifdef MPI_VERSION
@@ -99,7 +99,7 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
         coords[0] = codx;
         coords[1] = cody;
         (*grid).AccessToTmc(coords) = tmc_initial;
-        (*grid).AccessToTmp(coords) = 273.0;
+          (*grid).AccessToTmp(coords) = 573.0;
       }
   }
   else if(dim==3){
@@ -898,7 +898,7 @@ template <int dim> unsigned long update_uniformly(MMSP::grid<dim, int>& grid, in
 	#endif
 
 /*
-  int edge = 128;
+  int edge = 250;
   int number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*10.*10.)); // average grain is a disk of radius 10
   #ifdef MPI_VERSION
 	while (number_of_fields % np) --number_of_fields;
@@ -1144,7 +1144,7 @@ template <int dim> double TmcMax(MMSP::grid<dim, int>& grid, double *temp_at_max
          for(int cody=x0(grid, 1); cody <= x1(grid, 1); cody++){
            coords[0] = codx;
            coords[1] = cody;
-/*           if(grid.AccessToTmc(coords) > 128){
+/*           if(grid.AccessToTmc(coords) > 250){
              std::cout<<coords[0]<<"  "<<coords[1]<<";   "<< grid.AccessToTmc(coords)  <<std::endl;
              getchar();
            }*/
@@ -1205,21 +1205,23 @@ template <int dim> void UpdateLocalTmp(MMSP::grid<dim, int>& grid, long double p
          for(int cody=x0(grid, 1); cody <= x1(grid, 1); cody++){
            coords[0] = codx;
            coords[1] = cody;
-if(codx<=0.5*128)
+if(codx<=0.5*250){
   grid.AccessToTmp(coords) = 273; 
-else
-  grid.AccessToTmp(coords) = 673; 
+}
+else{
+  grid.AccessToTmp(coords) = 572; 
+}
 /*-----------------------
-if(codx<=0.25*128)
+if(codx<=0.25*250)
   grid.AccessToTmp(coords) = 100; 
-else if(0.25*128<codx<=0.5*128)
+else if(0.25*250<codx<=0.5*250)
   grid.AccessToTmp(coords) = 300; 
-else if(0.5*128<codx<=0.75*128)
+else if(0.5*250<codx<=0.75*250)
   grid.AccessToTmp(coords) = 500; 
-else if(0.75*128<codx<=128)
+else if(0.75*250<codx<=250)
   grid.AccessToTmp(coords) = 700; 
 -----------------------*/
-//           grid.AccessToTmp(coords) = 473 + 273.0*sin(3.14/128*codx + 3.14/(1.0e5)*physical_time);
+//           grid.AccessToTmp(coords) = 473 + 273.0*sin(3.14/250*codx + 3.14/(1.0e5)*physical_time);
          }
    }
    else if(dim==3){
@@ -1229,7 +1231,7 @@ else if(0.75*128<codx<=128)
              coords[0] = codx;
              coords[1] = cody;
              coords[2] = codz;
-             grid.AccessToTmp(coords) = 473 + 273.0*sin(3.14/128*codx + 3.14/(1.0e5)*physical_time);
+             grid.AccessToTmp(coords) = 473 + 273.0*sin(3.14/250*codx + 3.14/(1.0e5)*physical_time);
            }
    }
 }
@@ -1261,7 +1263,7 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 	#endif
 //	ghostswap(grid); 
 /*
-  int edge = 128;
+  int edge = 250;
   int number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*10.*10.)); // average grain is a disk of radius 10
   #ifdef MPI_VERSION
 	while (number_of_fields % np) --number_of_fields;
@@ -1506,7 +1508,7 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
     UpdateLocalTmc(grid, t_inc);
     physical_time += t_inc;
 	  MPI::COMM_WORLD.Barrier();
-//    if(rank==0) std::cout<<"physical_time is "<< physical_time << ";  t_inc is" << t_inc << std::endl; 
+    if(rank==0) std::cout<<"physical_time is "<< physical_time << ";  t_inc is" << t_inc << std::endl; 
     UpdateLocalTmp(grid, physical_time);
 	  MPI::COMM_WORLD.Barrier();
 
