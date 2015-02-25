@@ -18,7 +18,7 @@
 #include"tessellate.hpp"
 #include"output.cpp"
 
-double lambda = 5e-4/500;
+double lambda = 1e-3/1000;
 double L_initial = 3.2e-6; 
 double L0 = 1.1e-6;
 double K1 = 0.12336665;
@@ -27,6 +27,12 @@ double Q = 1.413e5; //fitted from Gangulee, A. ”Structure of electroplated and
 double n = 2; 
 double K_ = 3.554e-5; //fitted from Gangulee, A. ”Structure of electroplated and vapordeposited copper films. III. Recrystallization and grain growth.” Journal of Applied Physics 45.9 (1974): 3749-3756.
 double R = 8.314;
+double mu0 = 7.5e6; // see recrystallization and related annealing phenomena 1st edition, P96. 
+double Q_migration = 121000; // see recrystallization and related annealing phenomena 1st edition, P96. 
+
+double LargeAngleGrainBoundaryEnergy(const double temperature){//copper (100)|ND thin film texture
+  return 0.625+(temperature-1198.0)*(-1.0e-4);
+}
 
 struct EulerAngles{
   double phi_one;
@@ -51,9 +57,9 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
 
 	unsigned long timer=0;
 	if (dim == 2) {
-		const int edge = 250;
+		const int edge = 1000;
 		int number_of_fields(seeds);
-		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*1.6*1.6)); /* average grain is a disk of radius XXX
+		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*1*1)); /* average grain is a disk of radius XXX
 , XXX cannot be smaller than 0.1, or BGQ will abort.*/
 		#ifdef MPI_VERSION
 		while (number_of_fields % np) --number_of_fields; 
@@ -73,7 +79,7 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
 		MPI::COMM_WORLD.Barrier();
 		#endif
 	} else if (dim == 3) {
-		const int edge = 250;
+		const int edge = 1000;
 		int number_of_fields(seeds);
 		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge*edge)/(4./3*M_PI*10.*10.*10.)); // Average grain is a sphere of radius 10 voxels
 		#ifdef MPI_VERSION
@@ -99,7 +105,7 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
         coords[0] = codx;
         coords[1] = cody;
         (*grid).AccessToTmc(coords) = tmc_initial;
-          (*grid).AccessToTmp(coords) = 573.0;
+          (*grid).AccessToTmp(coords) = 1.0e6; //set the initial temp to be large enough such that initial physical time = 0.
       }
   }
   else if(dim==3){
@@ -110,7 +116,7 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
           coords[1] = cody;
           coords[2] = codz;
           (*grid).AccessToTmc(coords) = tmc_initial;
-          (*grid).AccessToTmp(coords) = 273.0;
+          (*grid).AccessToTmp(coords) = 1.0e6;
         }
   }
   
@@ -174,7 +180,7 @@ template <int dim> struct flip_index {
   int lattice_cells_each_dimension[dim];
 //  double* temperature_along_x; 
 //  EulerAngles* grain_orientations;
-  double t_mcs_max;
+  double mugamma_max;
 //  double t_s;
 };
 
@@ -254,10 +260,6 @@ void ReadTemperature(double* temperature_along_x, const int model_dimension){
     std::cout<<"x="<<i<<"  temp="<<temperature_along_x[i]<<std::endl;
   }  
 */
-}
-
-double LargeAngleGrainBoundaryEnergy(const double temperature){//copper (100)|ND thin film texture
-  return 0.625+(temperature-1198.0)*(-1.0e-4);
 }
 
 double StrainEnergyDenstiy(const double h, const double k, const double l, const double temperature){
@@ -530,8 +532,9 @@ template <int dim> void* flip_index_helper( void* s )
 //    double initial_physical_time=1.0/K_/exp(-Q/R/temperature)*(pow(L_initial,n)-pow(L0,n));
 //    double t_mcs_initial = pow(L_initial/K1/lambda,1.0/n1);
     double t_mcs = (*(ss->grid)).AccessToTmc(x);
-    double t_mcs_max = ss->t_mcs_max;
-    double site_selection_probability = t_mcs/t_mcs_max;
+    double mugamma_max = ss->mugamma_max;
+    double mugamma = mu0*exp(-Q_migration/R/temperature)*LargeAngleGrainBoundaryEnergy(temperature);
+    double site_selection_probability = mugamma/mugamma_max;
 //if(rank==0) std::cout<<"site_selection_probability is "<<site_selection_probability<<std::endl;
 	  double rd = double(rand())/double(RAND_MAX);
     if(rd>site_selection_probability){
@@ -898,7 +901,7 @@ template <int dim> unsigned long update_uniformly(MMSP::grid<dim, int>& grid, in
 	#endif
 
 /*
-  int edge = 250;
+  int edge = 1000;
   int number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*10.*10.)); // average grain is a disk of radius 10
   #ifdef MPI_VERSION
 	while (number_of_fields % np) --number_of_fields;
@@ -1136,20 +1139,22 @@ template <int dim> unsigned long update_uniformly(MMSP::grid<dim, int>& grid, in
 	return total_update_time/np; // average update time
 }
 
-template <int dim> double TmcMax(MMSP::grid<dim, int>& grid, double *temp_at_max_tmc){
-   double tmc_max = 0.0;
+template <int dim> double MugammaMax(MMSP::grid<dim, int>& grid, double *variables_at_max_mugamma){
+   double mugamma_max = 0.0;
    vector<int> coords (dim,0);
    if(dim==2){
        for(int codx=x0(grid, 0); codx <= x1(grid, 0); codx++) 
          for(int cody=x0(grid, 1); cody <= x1(grid, 1); cody++){
            coords[0] = codx;
            coords[1] = cody;
-/*           if(grid.AccessToTmc(coords) > 250){
+/*           if(grid.AccessToTmc(coords) > 1000){
              std::cout<<coords[0]<<"  "<<coords[1]<<";   "<< grid.AccessToTmc(coords)  <<std::endl;
              getchar();
            }*/
-           if(grid.AccessToTmc(coords) > tmc_max)
-             tmc_max = grid.AccessToTmc(coords);
+           double temperature = grid.AccessToTmp(coords);
+           double mugamma = mu0*exp(-Q_migration/R/temperature)*LargeAngleGrainBoundaryEnergy(temperature);
+           if(mugamma > mugamma_max)
+             mugamma_max = mugamma;
          }
    }
    else if(dim==3){
@@ -1159,12 +1164,15 @@ template <int dim> double TmcMax(MMSP::grid<dim, int>& grid, double *temp_at_max
            coords[0] = codx;
            coords[1] = cody;
            coords[2] = codz;
-           if(grid.AccessToTmc(coords) > tmc_max)
-             tmc_max = grid.AccessToTmc(coords);
+           double temperature = grid.AccessToTmp(coords);
+           double mugamma = mu0*exp(-Q_migration/R/temperature)*LargeAngleGrainBoundaryEnergy(temperature);
+           if(mugamma > mugamma_max)
+             mugamma_max = mugamma;
          }
    }
-   (*temp_at_max_tmc) = grid.AccessToTmp(coords);
-   return tmc_max;
+   variables_at_max_mugamma[0] = grid.AccessToTmc(coords);
+   variables_at_max_mugamma[1] = grid.AccessToTmp(coords);
+   return mugamma_max;
 }
 
 template <int dim> void UpdateLocalTmc(MMSP::grid<dim, int>& grid, long double t_inc){
@@ -1198,30 +1206,30 @@ template <int dim> void UpdateLocalTmc(MMSP::grid<dim, int>& grid, long double t
    }
 }
 
-template <int dim> void UpdateLocalTmp(MMSP::grid<dim, int>& grid, long double physical_time){
+template <int dim> void UpdateLocalTmp(MMSP::grid<dim, int>& grid, long double physical_time, double* temp){
    vector<int> coords (dim,0);
    if(dim==2){
        for(int codx=x0(grid, 0); codx <= x1(grid, 0); codx++) 
          for(int cody=x0(grid, 1); cody <= x1(grid, 1); cody++){
            coords[0] = codx;
            coords[1] = cody;
-if(codx<=0.5*250){
-  grid.AccessToTmp(coords) = 273; 
+if(codx<=0.5*1000){
+  grid.AccessToTmp(coords) = temp[0]; 
 }
 else{
-  grid.AccessToTmp(coords) = 572; 
+  grid.AccessToTmp(coords) = temp[1]; 
 }
 /*-----------------------
-if(codx<=0.25*250)
+if(codx<=0.25*1000)
   grid.AccessToTmp(coords) = 100; 
-else if(0.25*250<codx<=0.5*250)
+else if(0.25*1000<codx<=0.5*1000)
   grid.AccessToTmp(coords) = 300; 
-else if(0.5*250<codx<=0.75*250)
-  grid.AccessToTmp(coords) = 500; 
-else if(0.75*250<codx<=250)
+else if(0.5*1000<codx<=0.75*1000)
+  grid.AccessToTmp(coords) = 1000; 
+else if(0.75*1000<codx<=1000)
   grid.AccessToTmp(coords) = 700; 
 -----------------------*/
-//           grid.AccessToTmp(coords) = 473 + 273.0*sin(3.14/250*codx + 3.14/(1.0e5)*physical_time);
+//           grid.AccessToTmp(coords) = 473 + 273.0*sin(3.14/1000*codx + 3.14/(1.0e5)*physical_time);
          }
    }
    else if(dim==3){
@@ -1231,12 +1239,12 @@ else if(0.75*250<codx<=250)
              coords[0] = codx;
              coords[1] = cody;
              coords[2] = codz;
-             grid.AccessToTmp(coords) = 473 + 273.0*sin(3.14/250*codx + 3.14/(1.0e5)*physical_time);
+             grid.AccessToTmp(coords) = 473 + 273.0*sin(3.14/1000*codx + 3.14/(1.0e5)*physical_time);
            }
    }
 }
 
-template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, int steps_finished, int nthreads, int step_to_nonuniform, long double &physical_time)
+template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, int steps_finished, int nthreads, int step_to_nonuniform, long double &physical_time, double* temp)
 {
 	#if (!defined MPI_VERSION) && ((defined CCNI) || (defined BGQ))
 	std::cerr<<"Error: MPI is required for CCNI."<<std::endl;
@@ -1263,7 +1271,7 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 	#endif
 //	ghostswap(grid); 
 /*
-  int edge = 250;
+  int edge = 1000;
   int number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*10.*10.)); // average grain is a disk of radius 10
   #ifdef MPI_VERSION
 	while (number_of_fields % np) --number_of_fields;
@@ -1450,32 +1458,27 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 
 	for (int step=0; step<steps; step++){
 
-/* calculate tmc_max
-  double tmc_max;
-	#ifdef MPI_VERSION
-	MPI::COMM_WORLD.Allreduce(&update_timer, &total_update_time, 1, MPI_UNSIGNED_LONG, MPI_SUM);
-	#endif
- calculate tmc_max*/
+    double variables_at_max_mugamma[2] = {0.0, 0.0};
+    double mugamma_max_partition = MugammaMax(grid, &variables_at_max_mugamma[0]); 
+    MPI::COMM_WORLD.Barrier();
+    double mugamma_max_global = 0.0;
+//if(rank==0) std::cout<<"temp_at_max_mugamma is "<<temp_at_max_mugamma<<std::endl;
 
-    double temp_at_max_tmc = 0.0;
-    double tmc_max_partition = TmcMax(grid, &temp_at_max_tmc); // tmc includes tmc_initial
-    MPI::COMM_WORLD.Barrier();
-    double tmc_max_global = 0.0;
-//if(rank==0) std::cout<<"temp_at_max_tmc is "<<temp_at_max_tmc<<std::endl;
-    MPI::COMM_WORLD.Barrier();
-    MPI::COMM_WORLD.Allreduce(&tmc_max_partition, &tmc_max_global, 1, MPI_DOUBLE, MPI_MAX);
+    MPI::COMM_WORLD.Allreduce(&mugamma_max_partition, &mugamma_max_global, 1, MPI_DOUBLE, MPI_MAX);
     MPI::COMM_WORLD.Barrier();
 
 //if(rank==0) std::cout<<"steps_finished is "<<steps_finished<<"step_to_nonuniform is "<<step_to_nonuniform<<std::endl;
-//    std::cout<<"at rank "<<rank << "  tmc_max_partition is "<<tmc_max_partition<<"tmc_max_global is "<<tmc_max_global<<std::endl;
+//    std::cout<<"at rank "<<rank << "  mugamma_max_partition is "<<mugamma_max_partition<<"mugamma_max_global is "<<mugamma_max_global<<std::endl;
 
-    double local_temp_at_max_tmc = temp_at_max_tmc;
-    if(tmc_max_partition != tmc_max_global)
-      local_temp_at_max_tmc = 0.0;
-    MPI::COMM_WORLD.Allreduce(&local_temp_at_max_tmc, &temp_at_max_tmc, 1, MPI_DOUBLE, MPI_MAX);
+    double local_variables_at_max_mugamma[2] = {variables_at_max_mugamma[0], variables_at_max_mugamma[1]}; 
+    if(mugamma_max_partition != mugamma_max_global){
+      local_variables_at_max_mugamma[0] = 0.0;
+      local_variables_at_max_mugamma[1] = 0.0;
+    }
+    MPI::COMM_WORLD.Allreduce(&local_variables_at_max_mugamma, &variables_at_max_mugamma, 2, MPI_DOUBLE, MPI_MAX);
     MPI::COMM_WORLD.Barrier();
-//    if(rank==2) std::cout<<"temp_at_max_tmc is "<<temp_at_max_tmc<<std::endl;
-    double t_inc = ( pow(K1*lambda*pow(tmc_max_global+1,n1), n) - pow(K1*lambda*pow(tmc_max_global,n1), n) )/K_/exp(-Q/R/temp_at_max_tmc);
+//    if(rank==0) std::cout<<"tmc_at_max_mugamma is "<<variables_at_max_mugamma[0]<<"  MC step is "<<steps_finished+step<<std::endl;
+    double t_inc = ( pow(K1*lambda*pow(variables_at_max_mugamma[0]+1,n1), n) - pow(K1*lambda*pow(variables_at_max_mugamma[0],n1), n) )/K_/exp(-Q/R/variables_at_max_mugamma[1]);
 
 		unsigned long start = rdtsc();
     int num_of_sublattices=0;
@@ -1485,7 +1488,7 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 			for (int i=0; i!= nthreads ; i++) {
 				mat_para[i].sublattice=sublattice;
 				mat_para[i].num_of_points_to_flip=num_of_grids_to_flip[i][sublattice];
-        mat_para[i].t_mcs_max = tmc_max_global; //tmc_max is the MC time steps counted from the beginning of simulation
+        mat_para[i].mugamma_max = mugamma_max_global;
         for(int k=0; k<dim; k++) mat_para[i].cell_coord[k]=cell_coord[i][k];
 				pthread_create(&p_threads[i], &attr, flip_index_helper<dim>, (void*) &mat_para[i] );
 			}//loop over threads
@@ -1508,8 +1511,8 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
     UpdateLocalTmc(grid, t_inc);
     physical_time += t_inc;
 	  MPI::COMM_WORLD.Barrier();
-    if(rank==0) std::cout<<"physical_time is "<< physical_time << ";  t_inc is" << t_inc << std::endl; 
-    UpdateLocalTmp(grid, physical_time);
+//    if(rank==0) std::cout<<"physical_time is "<< physical_time << ";  t_inc is" << t_inc << std::endl; 
+    UpdateLocalTmp(grid, physical_time, temp);
 	  MPI::COMM_WORLD.Barrier();
 
 		#ifndef SILENT

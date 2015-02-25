@@ -185,7 +185,7 @@ int main(int argc, char* argv[]) {
 	// run tessellation & simulation
 	else if (std::string(argv[1]) == std::string("--nonstop")) {
 		// bad argument list
-		if (argc!=8) {
+		if (argc!=10) {
 			std::cout << PROGRAM << ": bad argument list.  Use\n\n";
 			std::cout << "    " << PROGRAM << " --help\n\n";
 			std::cout << "to generate help message.\n\n";
@@ -249,6 +249,8 @@ int main(int argc, char* argv[]) {
 			std::cout << "to generate help message.\n\n";
 			exit(-1);
 		}
+
+    double temp[2] = {atof(argv[8]), atof(argv[9])};
 
     		// set output file basename
 		int iterations_start = 0;
@@ -332,7 +334,7 @@ int main(int argc, char* argv[]) {
         if(increment_finished<step_to_nonuniform-1){
 				  comp_cycles = MMSP::update_uniformly(*grid, increment, nthreads);
         }else{
-          comp_cycles = MMSP::update(*grid, increment, increment_finished, nthreads, step_to_nonuniform, physical_time);
+          comp_cycles = MMSP::update(*grid, increment, increment_finished, nthreads, step_to_nonuniform, physical_time, &temp[0]);
         }
         increment_finished += increment;
 				unsigned long allcomp = 0;
