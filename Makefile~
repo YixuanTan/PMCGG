@@ -54,6 +54,9 @@ wrongendian: wrongendian.cpp
 mmsp2vtk: TKmmsp2vti.cpp $(core)
 	$(compiler) $(flags) $< -o $@ -lz
 
+Pmmsp2vtk: mmsp2vtkP.cpp $(core)
+	$(compiler) $(flags) $< -o $@ -lz
+
 mmsp2vtikeeporder: mmsp2vti_keeporder.cpp $(core)
 	$(compiler) $(flags) $< -o $@ -lz
 

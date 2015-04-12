@@ -37,6 +37,7 @@
 #include"graingrowth_MC.cpp"
 #endif
 #include"rdtsc.h"
+#include <string.h>
 
 template <typename T> int ilength(const T& i)
 {
@@ -363,8 +364,16 @@ int main(int argc, char* argv[]) {
 				//#if defined(BGQ) && defined(PHASEFIELD)
 				#ifdef BGQ
 				comp_bw = MMSP::output_bgq(*grid, filename, nthreads);
+/*ACME project*/
+	      MPI::COMM_WORLD.Barrier();
+//        MMSP::output_bgq_Pfield(*grid, strcat(filename,"p"), nthreads);
+/*ACME project*/
+
 				#else
+        MMSP::output_Pfield(*grid, strcat(filename,"p"));
+getchar();
 				MMSP::output(*grid, filename);
+
 				#endif
 				comp_bw *= clock_rate;
 				iocycles = rdtsc() - iocycles;
