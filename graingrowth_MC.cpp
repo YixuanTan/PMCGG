@@ -18,7 +18,7 @@
 #include"tessellate.hpp"
 #include"output.cpp"
 
-double lambda = 1e-3/128;
+double lambda = 1e-3/1000;
 double L_initial = 1.1e-6; 
 double L0 = 1.1e-6;
 double K1 = 0.94514608;
@@ -55,9 +55,9 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
 
 	unsigned long timer=0;
 	if (dim == 2) {
-		const int edge = 128;
+		const int edge = 1000;
 		int number_of_fields(seeds);
-		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*5.5*5.5)); /* average grain is a disk of radius XXX
+		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*.55*.55)); /* average grain is a disk of radius XXX
 , XXX cannot be smaller than 0.1, or BGQ will abort.*/
 		#ifdef MPI_VERSIONacc
 		while (number_of_fields % np) --number_of_fields; 
@@ -77,7 +77,7 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
 		MPI::COMM_WORLD.Barrier();
 		#endif
 	} else if (dim == 3) {
-		const int edge = 128;
+		const int edge = 1000;
 		int number_of_fields(seeds);
 		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge*edge)/(4./3*M_PI*10.*10.*10.)); // Average grain is a sphere of radius 10 voxels
 		#ifdef MPI_VERSION
@@ -105,6 +105,11 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
         (*grid).AccessToPfield(coords) = 1;
         (*grid).AccessToTmc(coords) = tmc_initial;
         (*grid).AccessToTmp(coords) = 1.0e6; //set the initial temp to be large enough such that initial physical time = 0.
+// compare n effect
+        (*grid).AccessToInitIndex(coords) = (*grid)(coords);
+        (*grid).AccessToInittmp(coords) = 1.0e6; //set the initial temp to be large enough such that initial physical time = 0.
+        (*grid).AccessToInittmc(coords) = tmc_initial;
+// compare n effect
       }
   }
   else if(dim==3){
@@ -117,6 +122,7 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
           (*grid).AccessToPfield(coords) = 1;
           (*grid).AccessToTmc(coords) = tmc_initial;
           (*grid).AccessToTmp(coords) = 1.0e6;
+          (*grid).AccessToInitIndex(coords) = (*grid)(coords);
         }
   }
   
@@ -899,7 +905,7 @@ template <int dim> unsigned long update_uniformly(MMSP::grid<dim, int>& grid, in
 	#endif
 
 /*
-  int edge = 128;
+  int edge = 1000;
   int number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*10.*10.)); // average grain is a disk of radius 10
   #ifdef MPI_VERSION
 	while (number_of_fields % np) --number_of_fields;
@@ -1145,7 +1151,7 @@ template <int dim> double PdenominatorMax(MMSP::grid<dim, int>& grid, double& tm
          for(int cody=x0(grid, 1); cody <= x1(grid, 1); cody++){
            coords[0] = codx;
            coords[1] = cody;
-/*           if(grid.AccessToTmc(coords) > 128){
+/*           if(grid.AccessToTmc(coords) > 1000){
              std::cout<<coords[0]<<"  "<<coords[1]<<";   "<< grid.AccessToTmc(coords)  <<std::endl;
              getchar();
            }*/
@@ -1182,66 +1188,68 @@ template <int dim> void UpdatePfield(MMSP::grid<dim, int>& grid, double tmc_at_P
            coords[1] = cody;
            grid.AccessToPfield(coords) = grid.AccessToTmc(coords)/tmc_at_PdenominatorMax_global;
 //             std::cout<<coords[0]<<"  "<<coords[1]<<";   "<< grid.AccessToTmc(coords)<<"  "<<tmc_at_PdenominatorMax_global <<std::endl;
-if(codx == 0.05*128 && cody==5){
+/*
+if(codx == 0.05*1000 && cody==5){
   std::ofstream file1;
   file1.open ("1.txt",std::ios::out | std::ios::app);
   file1 << grid.AccessToPfield(coords)<<std::endl;
   file1.close();
 }
-if(codx == 0.15*128 && cody==5){
+if(codx == 0.15*1000 && cody==5){
   std::ofstream file2;
   file2.open ("2.txt",std::ios::out | std::ios::app);
   file2 << grid.AccessToPfield(coords)<<std::endl;
   file2.close();
 }
-if(codx == 0.25*128 && cody==5){
+if(codx == 0.25*1000 && cody==5){
   std::ofstream file3;
   file3.open ("3.txt",std::ios::out | std::ios::app);
   file3 << grid.AccessToPfield(coords)<<std::endl;
   file3.close();
 }
-if(codx == 0.35*128 && cody==5){
+if(codx == 0.35*1000 && cody==5){
   std::ofstream file4;
   file4.open ("4.txt",std::ios::out | std::ios::app);
   file4 << grid.AccessToPfield(coords)<<std::endl;
   file4.close();
 }
-if(codx == 0.45*128 && cody==5){
+if(codx == 0.45*1000 && cody==5){
   std::ofstream file5;
   file5.open ("5.txt",std::ios::out | std::ios::app);
   file5 << grid.AccessToPfield(coords)<<std::endl;
   file5.close();
 }
-if(codx == 0.55*128 && cody==5){
+if(codx == 0.55*1000 && cody==5){
   std::ofstream file6;
   file6.open ("6.txt",std::ios::out | std::ios::app);
   file6 << grid.AccessToPfield(coords)<<std::endl;
   file6.close();
 }
-if(codx == 0.65*128 && cody==5){
+if(codx == 0.65*1000 && cody==5){
   std::ofstream file7;
   file7.open ("7.txt",std::ios::out | std::ios::app);
   file7 << grid.AccessToPfield(coords)<<std::endl;
   file7.close();
 }
-if(codx == 0.75*128 && cody==5){
+if(codx == 0.75*1000 && cody==5){
   std::ofstream file8;
   file8.open ("8.txt",std::ios::out | std::ios::app);
   file8 << grid.AccessToPfield(coords)<<std::endl;
   file8.close();
 }
-if(codx == 0.85*128 && cody==5){
+if(codx == 0.85*1000 && cody==5){
   std::ofstream file9;
   file9.open ("9.txt",std::ios::out | std::ios::app);
   file9 << grid.AccessToPfield(coords)<<std::endl;
   file9.close();
 }
-if(codx == 0.95*128 && cody==5){
+if(codx == 0.95*1000 && cody==5){
   std::ofstream file10;
   file10.open ("10.txt",std::ios::out | std::ios::app);
   file10 << grid.AccessToPfield(coords)<<std::endl;
   file10.close();
 }
+*/
          }
    }
    else if(dim==3){
@@ -1292,33 +1300,33 @@ template <int dim> void UpdateLocalTmp(MMSP::grid<dim, int>& grid, long double p
          for(int cody=x0(grid, 1); cody <= x1(grid, 1); cody++){
            coords[0] = codx;
            coords[1] = cody;
-           grid.AccessToTmp(coords) = temp[1]+(temp[0]-temp[1])/128*codx;
+           grid.AccessToTmp(coords) = temp[1]+(temp[0]-temp[1])/1000*codx;
 /*
-if(codx>0.5*128){
+if(codx>0.5*1000){
   grid.AccessToTmp(coords) = temp[1]; 
 }else{
   grid.AccessToTmp(coords) = temp[0]; 
 }
 
-if(codx>0.6666*128){
+if(codx>0.6666*1000){
   grid.AccessToTmp(coords) = 773; 
-}else if(codx>0.3333*128 && codx<=0.6666*128){
+}else if(codx>0.3333*1000 && codx<=0.6666*1000){
   grid.AccessToTmp(coords) = temp[1]; 
 }else{
   grid.AccessToTmp(coords) = temp[0]; 
 }
 */
 /*-----------------------
-if(codx<=0.25*128)
+if(codx<=0.25*1000)
   grid.AccessToTmp(coords) = 100; 
-else if(0.25*128<codx<=0.5*128)
+else if(0.25*1000<codx<=0.5*1000)
   grid.AccessToTmp(coords) = 300; 
-else if(0.5*128<codx<=0.75*128)
-  grid.AccessToTmp(coords) = 128; 
-else if(0.75*128<codx<=128)
+else if(0.5*1000<codx<=0.75*1000)
+  grid.AccessToTmp(coords) = 1000; 
+else if(0.75*1000<codx<=1000)
   grid.AccessToTmp(coords) = 700; 
 -----------------------*/
-//           grid.AccessToTmp(coords) = 473 + 273.0*sin(3.14/128*codx + 3.14/(1.0e5)*physical_time);
+//           grid.AccessToTmp(coords) = 473 + 273.0*sin(3.14/1000*codx + 3.14/(1.0e5)*physical_time);
          }
    }
    else if(dim==3){
@@ -1328,13 +1336,17 @@ else if(0.75*128<codx<=128)
              coords[0] = codx;
              coords[1] = cody;
              coords[2] = codz;
-             grid.AccessToTmp(coords) = 473 + 273.0*sin(3.14/128*codx + 3.14/(1.0e5)*physical_time);
+             grid.AccessToTmp(coords) = 473 + 273.0*sin(3.14/1000*codx + 3.14/(1.0e5)*physical_time);
            }
    }
 }
 
 template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, int steps_finished, int nthreads, int step_to_nonuniform, long double &physical_time, double* temp)
 {
+//compare n effect
+  if(steps_finished>=5000) n=4; // for comparing n=2 and n=4; final tmc is fixed to be 5000;
+//compare n effect
+
 	#if (!defined MPI_VERSION) && ((defined CCNI) || (defined BGQ))
 	std::cerr<<"Error: MPI is required for CCNI."<<std::endl;
 	exit(1);
@@ -1360,7 +1372,7 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 	#endif
 //	ghostswap(grid); 
 /*
-  int edge = 128;
+  int edge = 1000;
   int number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*10.*10.)); // average grain is a disk of radius 10
   #ifdef MPI_VERSION
 	while (number_of_fields % np) --number_of_fields;

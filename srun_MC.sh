@@ -8,12 +8,13 @@
 #
 #SBATCH --mail-type=END
 #SBATCH --mail-user=tany3@rpi.edu
-#SBATCH -D /gpfs/u/home/MMPM/MMPMtany/scratch/thinfilm/stg2/000c
-#SBATCH --partition small
-#SBATCH -t 360
-#SBATCH -N 32
-#SBATCH -n 128
+#SBATCH -D /gpfs/u/home/MMPM/MMPMtany/scratch/nCompare/data
+#SBATCH --partition debug
+#SBATCH -t 60
+#SBATCH -N 16
+#SBATCH -n 1024
 #SBATCH --overcommit
-#SBATCH -o /gpfs/u/home/MMPM/MMPMtany/scratch/thinfilm/stg2/000c/prMC_32_128.log
+#SBATCH -o /gpfs/u/home/MMPM/MMPMtany/scratch/nCompare/prMC_16_1024.log
 
-srun --runjob-opts="--mapping TEDCBA" /gpfs/u/home/MMPM/MMPMtany/scratch/thinfilm/q_MC.out --nonstop 2 voronmc.00000.dat 250000 10000 2 
+srun --runjob-opts="--mapping TEDCBA" /gpfs/u/home/MMPM/MMPMtany/scratch/nCompare/q_MC.out --nonstop 2 voronmc.0000.dat 10000 5000 0 2 773 673
+
