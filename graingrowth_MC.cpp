@@ -24,7 +24,7 @@ double L0 = 1.1e-6;
 double K1 = 0.94514608;
 double n1 = 0.48921977;
 double Q = 1.413e5; //fitted from Gangulee, A. ”Structure of electroplated and vapordeposited copper films. III. Recrystallization and grain growth.” Journal of Applied Physics 45.9 (1974): 3749-3756.
-double n = 2; 
+double n = 4.0; 
 double K_ = 3.554e-5; //fitted from Gangulee, A. ”Structure of electroplated and vapordeposited copper films. III. Recrystallization and grain growth.” Journal of Applied Physics 45.9 (1974): 3749-3756.
 double R = 8.314;
 
@@ -187,6 +187,7 @@ template <int dim> struct flip_index {
 //  double* temperature_along_x; 
 //  EulerAngles* grain_orientations;
   double Pdenominator;
+  double tmc_at_PdenominatorMax_global;
 //  double t_s;
 };
 
@@ -540,6 +541,10 @@ template <int dim> void* flip_index_helper( void* s )
     double t_mcs = (*(ss->grid)).AccessToTmc(x);
     double Pnumerator = exp(-Q/R/temperature)/pow(t_mcs,(n*n1-1));
     double site_selection_probability = Pnumerator/ss->Pdenominator;
+//compare n effect
+if(ss->tmc_at_PdenominatorMax_global!=1.0)//use Godfrey's model
+site_selection_probability = exp(-Q/R/temperature)/((ss->Pdenominator)*pow(ss->tmc_at_PdenominatorMax_global,(n*n1-1)));
+//compare n effect
 	  double rd = double(rand())/double(RAND_MAX);
     if(rd>site_selection_probability){
 //      hh--;// no need to guarantee that N times selection is performed in a configurational MC step, so hh is ony need to be the same as in uniform temp case for the highest temp site
@@ -1275,7 +1280,6 @@ template <int dim> void UpdateLocalTmc(MMSP::grid<dim, int>& grid, double t_inc)
            long double temperature = grid.AccessToTmp(coords);
            exp_eqn_rhs += K_*t_inc*exp(-Q/R/temperature);
            grid.AccessToTmc(coords) = pow(1.0/K1/lambda*pow(exp_eqn_rhs+pow(L0, n),1.0/n), 1.0/n1);  
-
          }
    }
    else if(dim==3){
@@ -1343,10 +1347,6 @@ else if(0.75*1000<codx<=1000)
 
 template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, int steps_finished, int nthreads, int step_to_nonuniform, long double &physical_time, double* temp)
 {
-//compare n effect
-  if(steps_finished>=5000) n=4; // for comparing n=2 and n=4; final tmc is fixed to be 5000;
-//compare n effect
-
 	#if (!defined MPI_VERSION) && ((defined CCNI) || (defined BGQ))
 	std::cerr<<"Error: MPI is required for CCNI."<<std::endl;
 	exit(1);
@@ -1565,7 +1565,6 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
     MPI::COMM_WORLD.Barrier();
     double Pdenominator_max_global = 0.0;
 
-
     MPI::COMM_WORLD.Allreduce(&Pdenominator_max_partition, &Pdenominator_max_global, 1, MPI_DOUBLE, MPI_MAX);
     MPI::COMM_WORLD.Barrier();
 
@@ -1590,6 +1589,14 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 				mat_para[i].sublattice=sublattice;
 				mat_para[i].num_of_points_to_flip=num_of_grids_to_flip[i][sublattice];
         mat_para[i].Pdenominator = Pdenominator_max_global;
+
+// compare n effect
+if(steps_finished>=5000){  // for comparing n=2 and n=4; final tmc is fixed to be 5000;
+tmc_at_PdenominatorMax_global = 1.0; //use my model
+}
+mat_para[i].tmc_at_PdenominatorMax_global = tmc_at_PdenominatorMax_global;
+// compare n effect
+
         for(int k=0; k<dim; k++) mat_para[i].cell_coord[k]=cell_coord[i][k];
 				pthread_create(&p_threads[i], &attr, flip_index_helper<dim>, (void*) &mat_para[i] );
 			}//loop over threads
@@ -1608,8 +1615,8 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
                 #endif
 		}//loop over color
     //after 1 global tmc, update all the local tmc
-	  MPI::COMM_WORLD.Barrier();
-    UpdatePfield(grid, tmc_at_PdenominatorMax_global);
+//	  MPI::COMM_WORLD.Barrier();
+//    UpdatePfield(grid, tmc_at_PdenominatorMax_global);
 	  MPI::COMM_WORLD.Barrier();
     physical_time += t_inc;
 	  MPI::COMM_WORLD.Barrier();
