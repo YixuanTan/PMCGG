@@ -18,14 +18,14 @@
 #include"tessellate.hpp"
 #include"output.cpp"
 
-double lambda = 1e-3/1000;
+double lambda = 1e-3/256;
 double L_initial = 1.1e-6; 
 double L0 = 1.1e-6;
 double K1 = 0.94514608;
 double n1 = 0.48921977;
 double Q = 1.413e5; //fitted from Gangulee, A. ”Structure of electroplated and vapordeposited copper films. III. Recrystallization and grain growth.” Journal of Applied Physics 45.9 (1974): 3749-3756.
-double n = 4.0; 
-double K_ = 3.554e-5; //fitted from Gangulee, A. ”Structure of electroplated and vapordeposited copper films. III. Recrystallization and grain growth.” Journal of Applied Physics 45.9 (1974): 3749-3756.
+double n = 2; 
+double K_ = 0.0004477044; //fitted from Gangulee, A. ”Structure of electroplated and vapordeposited copper films. III. Recrystallization and grain growth.” Journal of Applied Physics 45.9 (1974): 3749-3756.
 double R = 8.314;
 
 double LargeAngleGrainBoundaryEnergy(const double temperature){//copper (100)|ND thin film texture
@@ -39,6 +39,7 @@ struct EulerAngles{
 }; 
 
 void print_progress(const int step, const int steps, const int iterations);
+double CheckTemperature(double physical_time);
 
 namespace MMSP
 {
@@ -55,11 +56,11 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
 
 	unsigned long timer=0;
 	if (dim == 2) {
-		const int edge = 1000;
+		const int edge = 256;
 		int number_of_fields(seeds);
-		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*.55*.55)); /* average grain is a disk of radius XXX
+		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*5.5*5.5)); /* average grain is a disk of radius XXX
 , XXX cannot be smaller than 0.1, or BGQ will abort.*/
-		#ifdef MPI_VERSIONacc
+		#ifdef MPI_VERSION
 		while (number_of_fields % np) --number_of_fields; 
 		#endif
 		grid = new MMSP::grid<dim,int>(0, 0, edge, 0, edge);
@@ -77,7 +78,7 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
 		MPI::COMM_WORLD.Barrier();
 		#endif
 	} else if (dim == 3) {
-		const int edge = 1000;
+		const int edge = 256;
 		int number_of_fields(seeds);
 		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge*edge)/(4./3*M_PI*10.*10.*10.)); // Average grain is a sphere of radius 10 voxels
 		#ifdef MPI_VERSION
@@ -102,14 +103,8 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
       for(int cody=x0(*grid, 1); cody <= x1(*grid, 1); cody++){
         coords[0] = codx;
         coords[1] = cody;
-        (*grid).AccessToPfield(coords) = 1;
         (*grid).AccessToTmc(coords) = tmc_initial;
-        (*grid).AccessToTmp(coords) = 1.0e6; //set the initial temp to be large enough such that initial physical time = 0.
-// compare n effect
-        (*grid).AccessToInitIndex(coords) = (*grid)(coords);
-        (*grid).AccessToInittmp(coords) = 1.0e6; //set the initial temp to be large enough such that initial physical time = 0.
-        (*grid).AccessToInittmc(coords) = tmc_initial;
-// compare n effect
+          (*grid).AccessToTmp(coords) = 1.0e6; //set the initial temp to be large enough such that initial physical time = 0.
       }
   }
   else if(dim==3){
@@ -119,10 +114,8 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
           coords[0] = codx;
           coords[1] = cody;
           coords[2] = codz;
-          (*grid).AccessToPfield(coords) = 1;
           (*grid).AccessToTmc(coords) = tmc_initial;
           (*grid).AccessToTmp(coords) = 1.0e6;
-          (*grid).AccessToInitIndex(coords) = (*grid)(coords);
         }
   }
   
@@ -187,7 +180,6 @@ template <int dim> struct flip_index {
 //  double* temperature_along_x; 
 //  EulerAngles* grain_orientations;
   double Pdenominator;
-  double tmc_at_PdenominatorMax_global;
 //  double t_s;
 };
 
@@ -539,12 +531,9 @@ template <int dim> void* flip_index_helper( void* s )
 //    double initial_physical_time=1.0/K_/exp(-Q/R/temperature)*(pow(L_initial,n)-pow(L0,n));
 //    double t_mcs_initial = pow(L_initial/K1/lambda,1.0/n1);
     double t_mcs = (*(ss->grid)).AccessToTmc(x);
-    double Pnumerator = exp(-Q/R/temperature)/pow(t_mcs,(n*n1-1));
+    double Pnumerator = exp(-Q/R/temperature)/pow(t_mcs,(2*n1-1));
     double site_selection_probability = Pnumerator/ss->Pdenominator;
-//compare n effect
-if(ss->tmc_at_PdenominatorMax_global!=1.0)//use Godfrey's model
-site_selection_probability = exp(-Q/R/temperature)/((ss->Pdenominator)*pow(ss->tmc_at_PdenominatorMax_global,(n*n1-1)));
-//compare n effect
+//if(rank==0) std::cout<<"site_selection_probability is "<<site_selection_probability<<std::endl;
 	  double rd = double(rand())/double(RAND_MAX);
     if(rd>site_selection_probability){
 //      hh--;// no need to guarantee that N times selection is performed in a configurational MC step, so hh is ony need to be the same as in uniform temp case for the highest temp site
@@ -630,14 +619,12 @@ site_selection_probability = exp(-Q/R/temperature)/((ss->Pdenominator)*pow(ss->t
 				  dE += 1.0/2*((spin!=spin2)-(spin!=spin1));
 				    //				                dE += 1.0/2*((spin!=spin2)-(spin!=spin1))*film_thickness*LargeAngleGrainBoundaryEnergy(temperature); // grain boundary energy  
 /*
-
               bool incoherent_twin_boundary = false, coherent_twin_boundary = false;
               double max,medium,min;
               //check with index before
               double h=sin(((ss->grain_orientations)[spin]).psi)*sin(((ss->grain_orientations)[spin]).phi_two);  
               double k=sin(((ss->grain_orientations)[spin]).psi)*cos(((ss->grain_orientations)[spin]).phi_two);  
               double l=cos(((ss->grain_orientations)[spin]).psi);
-
               if(CheckSixtyDegreeRotation(h,k,l,h1,k1,l1)){// if h k l is 60 degree away from h1 k1 l1 w.r.t. rotating around <111>
                 incoherent_twin_boundary = true;
                 if(i==0){//i=0 j!=0   x[0] along rolling direction
@@ -910,7 +897,7 @@ template <int dim> unsigned long update_uniformly(MMSP::grid<dim, int>& grid, in
 	#endif
 
 /*
-  int edge = 1000;
+  int edge = 256;
   int number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*10.*10.)); // average grain is a disk of radius 10
   #ifdef MPI_VERSION
 	while (number_of_fields % np) --number_of_fields;
@@ -918,7 +905,6 @@ template <int dim> unsigned long update_uniformly(MMSP::grid<dim, int>& grid, in
 */
 /*
   EulerAngles *grain_orientations = new EulerAngles[200];
-
   if(rank==0){
     ReadData(grain_orientations);
   }
@@ -1107,8 +1093,8 @@ template <int dim> unsigned long update_uniformly(MMSP::grid<dim, int>& grid, in
 			MPI::COMM_WORLD.Barrier();
 			#endif
 
-//			ghostswap(grid, sublattice); // once looped over a "color", ghostswap.
-			ghostswap(grid); // once looped over a "color", ghostswap.
+			ghostswap(grid, sublattice); // once looped over a "color", ghostswap.
+//			ghostswap(grid); // once looped over a "color", ghostswap.
       #ifdef MPI_VERSION
 			MPI::COMM_WORLD.Barrier();
                 #endif
@@ -1156,15 +1142,12 @@ template <int dim> double PdenominatorMax(MMSP::grid<dim, int>& grid, double& tm
          for(int cody=x0(grid, 1); cody <= x1(grid, 1); cody++){
            coords[0] = codx;
            coords[1] = cody;
-/*           if(grid.AccessToTmc(coords) > 1000){
-             std::cout<<coords[0]<<"  "<<coords[1]<<";   "<< grid.AccessToTmc(coords)  <<std::endl;
-             getchar();
-           }*/
            double temperature = grid.AccessToTmp(coords);
            double Pdenominator = exp(-Q/R/temperature)/pow(grid.AccessToTmc(coords), (n*n1-1));
-           if(Pdenominator > Pdenominator_max)
+           if(Pdenominator > Pdenominator_max){
              Pdenominator_max = Pdenominator;
              tmc_at_PdenominatorMax = grid.AccessToTmc(coords);
+           }
          }
    }
    else if(dim==3){
@@ -1175,98 +1158,14 @@ template <int dim> double PdenominatorMax(MMSP::grid<dim, int>& grid, double& tm
            coords[1] = cody;
            coords[2] = codz;
            double temperature = grid.AccessToTmp(coords);
-           double Pdenominator = exp(-Q/R/temperature)/pow(grid.AccessToTmc(coords), (n*n1-1));
-           if(Pdenominator > Pdenominator_max)
+           double Pdenominator = exp(-Q/R/temperature)/pow(grid.AccessToTmc(coords), (2*n1-1));
+           if(Pdenominator > Pdenominator_max){
              Pdenominator_max = Pdenominator;
              tmc_at_PdenominatorMax = grid.AccessToTmc(coords);
-         }
+           }
+        }
    }
    return Pdenominator_max;
-}
-
-template <int dim> void UpdatePfield(MMSP::grid<dim, int>& grid, double tmc_at_PdenominatorMax_global){
-   vector<int> coords (dim,0);
-   if(dim==2){
-       for(int codx=x0(grid, 0); codx <= x1(grid, 0); codx++) 
-         for(int cody=x0(grid, 1); cody <= x1(grid, 1); cody++){
-           coords[0] = codx;
-           coords[1] = cody;
-           grid.AccessToPfield(coords) = grid.AccessToTmc(coords)/tmc_at_PdenominatorMax_global;
-//             std::cout<<coords[0]<<"  "<<coords[1]<<";   "<< grid.AccessToTmc(coords)<<"  "<<tmc_at_PdenominatorMax_global <<std::endl;
-/*
-if(codx == 0.05*1000 && cody==5){
-  std::ofstream file1;
-  file1.open ("1.txt",std::ios::out | std::ios::app);
-  file1 << grid.AccessToPfield(coords)<<std::endl;
-  file1.close();
-}
-if(codx == 0.15*1000 && cody==5){
-  std::ofstream file2;
-  file2.open ("2.txt",std::ios::out | std::ios::app);
-  file2 << grid.AccessToPfield(coords)<<std::endl;
-  file2.close();
-}
-if(codx == 0.25*1000 && cody==5){
-  std::ofstream file3;
-  file3.open ("3.txt",std::ios::out | std::ios::app);
-  file3 << grid.AccessToPfield(coords)<<std::endl;
-  file3.close();
-}
-if(codx == 0.35*1000 && cody==5){
-  std::ofstream file4;
-  file4.open ("4.txt",std::ios::out | std::ios::app);
-  file4 << grid.AccessToPfield(coords)<<std::endl;
-  file4.close();
-}
-if(codx == 0.45*1000 && cody==5){
-  std::ofstream file5;
-  file5.open ("5.txt",std::ios::out | std::ios::app);
-  file5 << grid.AccessToPfield(coords)<<std::endl;
-  file5.close();
-}
-if(codx == 0.55*1000 && cody==5){
-  std::ofstream file6;
-  file6.open ("6.txt",std::ios::out | std::ios::app);
-  file6 << grid.AccessToPfield(coords)<<std::endl;
-  file6.close();
-}
-if(codx == 0.65*1000 && cody==5){
-  std::ofstream file7;
-  file7.open ("7.txt",std::ios::out | std::ios::app);
-  file7 << grid.AccessToPfield(coords)<<std::endl;
-  file7.close();
-}
-if(codx == 0.75*1000 && cody==5){
-  std::ofstream file8;
-  file8.open ("8.txt",std::ios::out | std::ios::app);
-  file8 << grid.AccessToPfield(coords)<<std::endl;
-  file8.close();
-}
-if(codx == 0.85*1000 && cody==5){
-  std::ofstream file9;
-  file9.open ("9.txt",std::ios::out | std::ios::app);
-  file9 << grid.AccessToPfield(coords)<<std::endl;
-  file9.close();
-}
-if(codx == 0.95*1000 && cody==5){
-  std::ofstream file10;
-  file10.open ("10.txt",std::ios::out | std::ios::app);
-  file10 << grid.AccessToPfield(coords)<<std::endl;
-  file10.close();
-}
-*/
-         }
-   }
-   else if(dim==3){
-     for(int codx=x0(grid, 0); codx <= x1(grid, 0); codx++)  
-         for(int cody=x0(grid, 1); cody <= x1(grid, 1); cody++) 
-           for(int codz=x0(grid, 2); codz <= x1(grid, 2); codz++){
-             coords[0] = codx;
-             coords[1] = cody;
-             coords[2] = codz;
-             grid.AccessToPfield(coords) = grid.AccessToTmc(coords)/tmc_at_PdenominatorMax_global;
-           }
-   }
 }
 
 template <int dim> void UpdateLocalTmc(MMSP::grid<dim, int>& grid, double t_inc){
@@ -1304,34 +1203,19 @@ template <int dim> void UpdateLocalTmp(MMSP::grid<dim, int>& grid, long double p
          for(int cody=x0(grid, 1); cody <= x1(grid, 1); cody++){
            coords[0] = codx;
            coords[1] = cody;
-           grid.AccessToTmp(coords) = temp[1]+(temp[0]-temp[1])/1000*codx;
-/*
-if(codx>0.5*1000){
-  grid.AccessToTmp(coords) = temp[1]; 
-}else{
-  grid.AccessToTmp(coords) = temp[0]; 
-}
-
-if(codx>0.6666*1000){
-  grid.AccessToTmp(coords) = 773; 
-}else if(codx>0.3333*1000 && codx<=0.6666*1000){
-  grid.AccessToTmp(coords) = temp[1]; 
-}else{
-  grid.AccessToTmp(coords) = temp[0]; 
-}
-*/
+           grid.AccessToTmp(coords) = temp[0]; 
+         }
 /*-----------------------
-if(codx<=0.25*1000)
+if(codx<=0.25*256)
   grid.AccessToTmp(coords) = 100; 
-else if(0.25*1000<codx<=0.5*1000)
+else if(0.25*256<codx<=0.5*256)
   grid.AccessToTmp(coords) = 300; 
-else if(0.5*1000<codx<=0.75*1000)
-  grid.AccessToTmp(coords) = 1000; 
-else if(0.75*1000<codx<=1000)
+else if(0.5*256<codx<=0.75*256)
+  grid.AccessToTmp(coords) = 256; 
+else if(0.75*256<codx<=256)
   grid.AccessToTmp(coords) = 700; 
 -----------------------*/
-//           grid.AccessToTmp(coords) = 473 + 273.0*sin(3.14/1000*codx + 3.14/(1.0e5)*physical_time);
-         }
+//           grid.AccessToTmp(coords) = 473 + 273.0*sin(3.14/256*codx + 3.14/(1.0e5)*physical_time);
    }
    else if(dim==3){
      for(int codx=x0(grid, 0); codx <= x1(grid, 0); codx++)  
@@ -1340,7 +1224,7 @@ else if(0.75*1000<codx<=1000)
              coords[0] = codx;
              coords[1] = cody;
              coords[2] = codz;
-             grid.AccessToTmp(coords) = 473 + 273.0*sin(3.14/1000*codx + 3.14/(1.0e5)*physical_time);
+             grid.AccessToTmp(coords) = 473 + 273.0*sin(3.14/256*codx + 3.14/(1.0e5)*physical_time);
            }
    }
 }
@@ -1372,7 +1256,7 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 	#endif
 //	ghostswap(grid); 
 /*
-  int edge = 1000;
+  int edge = 256;
   int number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*10.*10.)); // average grain is a disk of radius 10
   #ifdef MPI_VERSION
 	while (number_of_fields % np) --number_of_fields;
@@ -1380,7 +1264,6 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 */
 /*
   EulerAngles *grain_orientations = new EulerAngles[200];
-
   if(rank==0){
     ReadData(grain_orientations);
   }
@@ -1559,7 +1442,6 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 
 	for (int step=0; step<steps; step++){
 
-
     double tmc_at_PdenominatorMax = 0.0;
     double Pdenominator_max_partition = PdenominatorMax(grid,tmc_at_PdenominatorMax); 
     MPI::COMM_WORLD.Barrier();
@@ -1575,10 +1457,16 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
     MPI::COMM_WORLD.Allreduce(&tmc_at_PdenominatorMax, &tmc_at_PdenominatorMax_global, 1, MPI_DOUBLE, MPI_MAX);
     MPI::COMM_WORLD.Barrier();
 
-//if(rank==0) std::cout<<"steps_finished is "<<steps_finished<<"step_to_nonuniform is "<<step_to_nonuniform<<std::endl;
+//    double t_inc = n*n1*pow(K1*lambda,n)/K_/Pdenominator_max_global;
 
-//    double t_inc = ( pow(K1*lambda*pow(variables_at_max_mugamma[0]+1,n1), n) - pow(K1*lambda*pow(variables_at_max_mugamma[0],n1), n) )/K_/exp(-Q/R/variables_at_max_mugamma[1]);
-    double t_inc = n*n1*pow(K1*lambda,n)/K_/Pdenominator_max_global;
+    vector<int> coords (dim,0);
+    coords[0] = x0(grid, 0);
+    coords[1] = x0(grid, 1);
+    coords[dim] = x0(grid, dim);
+    double uniform_temperature = grid.AccessToTmp(coords);
+std::cout<<"uniform_temperature is "<<uniform_temperature<<std::endl;
+    double t_inc = ( pow(K1*lambda*pow(tmc_at_PdenominatorMax_global+1,n1), n) - 
+                     pow(K1*lambda*pow(tmc_at_PdenominatorMax_global,n1), n) )/K_/exp(-Q/R/uniform_temperature);
 
 		unsigned long start = rdtsc();
     int num_of_sublattices=0;
@@ -1589,14 +1477,6 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 				mat_para[i].sublattice=sublattice;
 				mat_para[i].num_of_points_to_flip=num_of_grids_to_flip[i][sublattice];
         mat_para[i].Pdenominator = Pdenominator_max_global;
-
-// compare n effect
-if(steps_finished>=5000){  // for comparing n=2 and n=4; final tmc is fixed to be 5000;
-tmc_at_PdenominatorMax_global = 1.0; //use my model
-}
-mat_para[i].tmc_at_PdenominatorMax_global = tmc_at_PdenominatorMax_global;
-// compare n effect
-
         for(int k=0; k<dim; k++) mat_para[i].cell_coord[k]=cell_coord[i][k];
 				pthread_create(&p_threads[i], &attr, flip_index_helper<dim>, (void*) &mat_para[i] );
 			}//loop over threads
@@ -1608,21 +1488,22 @@ mat_para[i].tmc_at_PdenominatorMax_global = tmc_at_PdenominatorMax_global;
 			MPI::COMM_WORLD.Barrier();
 			#endif
 
-//			ghostswap(grid, sublattice); // once looped over a "color", ghostswap.
-			ghostswap(grid); // once looped over a "color", ghostswap.
+			ghostswap(grid, sublattice); // once looped over a "color", ghostswap.
+//			ghostswap(grid); // once looped over a "color", ghostswap.
             #ifdef MPI_VERSION
 			MPI::COMM_WORLD.Barrier();
                 #endif
 		}//loop over color
-    //after 1 global tmc, update all the local tmc
-//	  MPI::COMM_WORLD.Barrier();
-//    UpdatePfield(grid, tmc_at_PdenominatorMax_global);
+
 	  MPI::COMM_WORLD.Barrier();
     physical_time += t_inc;
+std::cout<<"physical_time is "<<physical_time<<std::endl;
 	  MPI::COMM_WORLD.Barrier();
     UpdateLocalTmc(grid, t_inc);
 	  MPI::COMM_WORLD.Barrier();
-//    if(rank==0) std::cout<<"physical_time is "<< physical_time << ";  t_inc is" << t_inc << std::endl; 
+    double global_temperature = CheckTemperature(physical_time);
+    temp[0] = global_temperature;
+    temp[1] = global_temperature;
     UpdateLocalTmp(grid, physical_time, temp);
 	  MPI::COMM_WORLD.Barrier();
 
@@ -1662,6 +1543,27 @@ mat_para[i].tmc_at_PdenominatorMax_global = tmc_at_PdenominatorMax_global;
 	return total_update_time/np; // average update time
 }
 
+}
+
+
+double CheckTemperature(double physical_time){
+  double global_temperature = 0;
+double time_list[26] = {0,120,300,480,660,960,1080,1200,1260,1320,1380,1500,1620,1740,1860,2100,2280,2580,2700,2940,3060,3180,3300,3540,3660,4260};
+double temperature_list[26] = {387,409,486,544,596,670,686,703,712,720,725,727,729,730,732,725,723,725,727,729,729,730,657,574,540,483};
+
+  for(int i=0; i<26; i++){
+    if(physical_time>time_list[25]){
+     	std::cerr<<"simulation runs beyond experiment on time"<<std::endl;
+//	    exit(1);
+getchar();
+    }else{
+      for(int j=0; j<25; j++){
+        if(time_list[j]<physical_time & time_list[j+1]>physical_time)
+          global_temperature = temperature_list[j] + (temperature_list[j+1]-temperature_list[j])/(time_list[j+1]-time_list[j])*(physical_time-time_list[j]);
+      }
+    }
+  }
+  return global_temperature;
 }
 
 #ifndef SILENT

@@ -332,20 +332,6 @@ int main(int argc, char* argv[]) {
 
 			// perform computation
 			for (int i = iterations_start; i < steps; i += increment) {
-//compare n effect
-        if(i==steps/2){// revert grid to initial grid
-          MMSP::vector<int> coords (dim,0);
-          for(int codx=x0(*grid, 0); codx <= x1(*grid, 0); codx++) 
-            for(int cody=x0(*grid, 1); cody <= x1(*grid, 1); cody++){
-              coords[0] = codx;
-              coords[1] = cody;
-              (*grid)(coords) = (*grid).AccessToInitIndex(coords);
-              (*grid).AccessToTmc(coords) = (*grid).AccessToInittmc(coords)
-              (*grid).AccessToTmp(coords) = (*grid).AccessToInittmp(coords);
-            }
-          physical_time = 0;
-        }
-//compare n effect
         if(increment_finished<step_to_nonuniform-1){
 				  comp_cycles = MMSP::update_uniformly(*grid, increment, nthreads);
         }else{
