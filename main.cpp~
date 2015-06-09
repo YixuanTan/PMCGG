@@ -38,6 +38,8 @@
 #endif
 #include"rdtsc.h"
 #include <string.h>
+#include <chrono>
+#include <ctime>
 
 template <typename T> int ilength(const T& i)
 {
@@ -139,7 +141,6 @@ int main(int argc, char* argv[]) {
 	}
 
 
-
 	// generate initial grid
 	else if (std::string(argv[1]) == std::string("--init")) {
 		// check argument list
@@ -186,7 +187,7 @@ int main(int argc, char* argv[]) {
 	//run tessellation & simulation
 	else if (std::string(argv[1]) == std::string("--nonstop")) {
 		// bad argument list
-		if (argc!=10) {
+		if (argc!=11 && argc!=10) {
 			std::cout << PROGRAM << ": bad argument list.  Use\n\n";
 			std::cout << "    " << PROGRAM << " --help\n\n";
 			std::cout << "to generate help message.\n\n";
@@ -253,7 +254,11 @@ int main(int argc, char* argv[]) {
 
     double temp[2] = {atof(argv[8]), atof(argv[9])};
 
-    		// set output file basename
+    std::string initfile;
+    if (argc==11) // if continue simulation from an existed file.
+		  initfile = argv[10];
+
+    // set output file basename
 		int iterations_start = 0;
 		std::string base;
 		const int last_dot = outfile.find_last_of(".");
@@ -291,8 +296,17 @@ int main(int argc, char* argv[]) {
 		double init_bw=0.0, comp_bw=0.0;
 		if (dim == 2) {
 			// tessellate
-			GRID2D* grid=NULL;
-			init_cycles = MMSP::generate<2>(grid, 0, nthreads);
+			MMSP::grid<2,int>* grid=NULL;
+      if(argc == 10)
+			  init_cycles = MMSP::generate<2>(grid, 0, nthreads);
+      else if(argc == 11){
+        if(initfile.find(".txt") != std::string::npos){
+          MMSP::growthexperiment<2>(grid, initfile.c_str());
+        }else{
+          MMSP::generate<2>(grid, initfile.c_str());
+        }
+      }
+
 			#ifndef SILENT
 			if (rank==0) std::cout<<"Finished tessellation in "<<double(init_cycles)/clock_rate<<" sec."<<std::endl;
 			#else
@@ -317,9 +331,11 @@ int main(int argc, char* argv[]) {
 			iocycles = rdtsc() - iocycles;
 			unsigned long allio=0;
 			double allbw = 0.0;
+double allbwsum = 0.0;
 			#ifdef MPI_VERSION
 			MPI_Reduce(&iocycles, &allio, 1, MPI_UNSIGNED_LONG, MPI_MAX, 0, MPI::COMM_WORLD);
 			MPI_Reduce(&init_bw, &allbw, 1, MPI_DOUBLE, MPI_SUM, 0, MPI::COMM_WORLD);
+allbwsum += allbw;
 			#else
 			allio=iocycles;
 			#endif
@@ -332,6 +348,7 @@ int main(int argc, char* argv[]) {
 
 			// perform computation
 			for (int i = iterations_start; i < steps; i += increment) {
+//auto t_start = std::chrono::high_resolution_clock::now();
         if(increment_finished<step_to_nonuniform-1){
 				  comp_cycles = MMSP::update_uniformly(*grid, increment, nthreads);
         }else{
@@ -343,8 +360,9 @@ int main(int argc, char* argv[]) {
 				MPI_Reduce(&comp_cycles, &allcomp, 1, MPI_DOUBLE, MPI_SUM, 0, MPI::COMM_WORLD);
 				#endif
 				//if (rank==0) std::cout<<"comp_time(sec)\t"<<double(allcomp)/(np*clock_rate)<<std::endl;
-				if (rank==0) std::cout<<double(allcomp)/(np*clock_rate)<<'\t'<<std::flush;
-
+        //if (rank==0) std::cout<<"CPU seconds are: "<<double(allcomp)/(np*clock_rate)<<'\t'<<std::flush;
+//auto t_end = std::chrono::high_resolution_clock::now();
+//if (rank==0) std::cout<<"CPU seconds are: "<<double(allcomp)/clock_rate<<'\t'<<std::flush;
 				// generate output filename
 				std::stringstream outstr;
 				outstr << base;
@@ -376,6 +394,7 @@ int main(int argc, char* argv[]) {
 				#ifdef MPI_VERSION
 				MPI_Reduce(&iocycles, &allio, 1, MPI_UNSIGNED_LONG, MPI_MAX, 0, MPI::COMM_WORLD);
 				MPI_Reduce(&comp_bw, &allbw, 1, MPI_DOUBLE, MPI_SUM, 0, MPI::COMM_WORLD);
+allbwsum += allbw;
 				#else
 				allio = iocycles;
 				#endif
@@ -387,7 +406,7 @@ int main(int argc, char* argv[]) {
 				#endif
 				outstr.str("");
 			}
-      if (rank==0) std::cout<<"physical time is "<<physical_time<<std::endl; 
+//      if (rank==0) std::cout<<"physical time is "<<physical_time<<std::endl; 
 			if (grid!=NULL) delete grid; grid=NULL;
 		}
 

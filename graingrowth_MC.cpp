@@ -18,28 +18,17 @@
 #include"tessellate.hpp"
 #include"output.cpp"
 
-double lambda = 1e-3/256;
-double L_initial = 1.1e-6; 
-double L0 = 1.1e-6;
+double lambda = 1.0e-3/256; //This is fixed from Monte Carlo simulation, so do not change it.  here 10^-3mm is the domain size, 10^-3mm = 1 um, so each pixel is 1 nm, all length unit should be with mm.
+double L_initial = 30*1.0e-3/256; // initially 30 nm diameter
+double L0 = 3*1.0e-3/256; 
 double K1 = 0.94514608;
 double n1 = 0.48921977;
-double Q = 1.413e5; //fitted from Gangulee, A. ”Structure of electroplated and vapordeposited copper films. III. Recrystallization and grain growth.” Journal of Applied Physics 45.9 (1974): 3749-3756.
-double n = 2; 
-double K_ = 0.0004477044; //fitted from Gangulee, A. ”Structure of electroplated and vapordeposited copper films. III. Recrystallization and grain growth.” Journal of Applied Physics 45.9 (1974): 3749-3756.
+double Q = 1.2552e5; //fitted from Mcbee, William C., and John A. McComb. "Grain growth in thin aluminum-4% copper alloy films." Thin Solid Films 30.1 (1975): 137-143.
+double n = 1/0.18; 
+double K_ = 5.3137e-17; // length in mm, time in second  fitted from Mcbee, William C., and John A. McComb. "Grain growth in thin aluminum-4% copper alloy films." Thin Solid Films 30.1 (1975): 137-143.
 double R = 8.314;
 
-double LargeAngleGrainBoundaryEnergy(const double temperature){//copper (100)|ND thin film texture
-  return 0.625+(temperature-1198.0)*(-1.0e-4);
-}
-
-struct EulerAngles{
-  double phi_one;
-  double psi;
-  double phi_two;  
-}; 
-
 void print_progress(const int step, const int steps, const int iterations);
-double CheckTemperature(double physical_time);
 
 namespace MMSP
 {
@@ -58,7 +47,7 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
 	if (dim == 2) {
 		const int edge = 256;
 		int number_of_fields(seeds);
-		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*5.5*5.5)); /* average grain is a disk of radius XXX
+		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*1.5*1.5)); /* average grain is a disk of radius XXX
 , XXX cannot be smaller than 0.1, or BGQ will abort.*/
 		#ifdef MPI_VERSION
 		while (number_of_fields % np) --number_of_fields; 
@@ -165,6 +154,106 @@ unsigned long generate(int dim, char* filename, int seeds, int nthreads)
 	return timer;
 }
 
+template <int dim>
+unsigned long generate(MMSP::grid<dim,int >*& grid, const char* filename)
+{
+	#if (defined CCNI) && (!defined MPI_VERSION)
+	std::cerr<<"Error: MPI is required for CCNI."<<std::endl;
+	exit(1);
+	#endif
+	#ifdef MPI_VERSION
+	int np = MPI::COMM_WORLD.Get_size();
+	#endif
+
+	unsigned long timer=0;
+	if (dim == 2) {
+		const int edge = 256;
+		grid = new MMSP::grid<dim,int>(0, 0, edge, 0, edge);
+		(*grid).input(filename, 1, false);
+		#ifdef MPI_VERSION
+		MPI::COMM_WORLD.Barrier();
+		#endif
+	} else if (dim == 3) {
+		const int edge = 256;
+		grid = new MMSP::grid<dim,int>(0, 0, edge, 0, edge, 0, edge);
+		(*grid).input(filename, 1, false);
+		#ifdef MPI_VERSION
+		MPI::COMM_WORLD.Barrier();
+		#endif
+	}
+	return timer;
+}
+
+template <int dim>
+unsigned long growthexperiment(MMSP::grid<dim,int >*& grid, const char* filename)
+{
+	#if (defined CCNI) && (!defined MPI_VERSION)
+	std::cerr<<"Error: MPI is required for CCNI."<<std::endl;
+	exit(1);
+	#endif
+	#ifdef MPI_VERSION
+	int np = MPI::COMM_WORLD.Get_size();
+	#endif
+  int nx,ny,nz;
+	unsigned long timer=0;
+	if (dim == 2) {
+	  nx = 256;
+		ny = 256;
+		grid = new MMSP::grid<dim,int>(0, 0, nx, 0, ny);
+		#ifdef MPI_VERSION
+		MPI::COMM_WORLD.Barrier();
+		#endif
+	} else if (dim == 3) {
+		std::cerr << " Initial experiment grain structure input only available for 2D simulation" << std::endl;
+	  exit(-1);
+	}
+
+/*---------------read grain ID------------------*/
+	std::ifstream idtxt(filename, std::ios::in);
+	if (!idtxt) {
+		std::cerr << "File idtxt error: could not open ";
+		std::cerr << filename << "." << std::endl;
+	  exit(-1);
+  }
+
+  int* ids = new int[nx*ny];
+  int grainID;
+  int count = 0;
+  int fields = 1;
+  while(idtxt>>grainID){
+    ids[count] = grainID;
+    ++count; 
+    fields = (grainID>fields)?grainID:fields;
+  }
+	MPI::COMM_WORLD.Barrier();
+  idtxt.close();
+/*----------------------------------------------*/
+
+/*------------------Initial tmc----------------------*/
+  double tmc_initial = pow(L_initial/K1/lambda,1.0/n1);
+  vector<int> coords (dim,0);
+  if(dim==2){
+    for(int codx=x0(*grid, 0); codx <= x1(*grid, 0); codx++) 
+      for(int cody=x0(*grid, 1); cody <= x1(*grid, 1); cody++){
+        coords[0] = codx;
+        coords[1] = cody;
+        (*grid).AccessToTmc(coords) = tmc_initial;
+        (*grid).AccessToTmp(coords) = 1.0e6; //set the initial temp to be large enough such that initial physical time = 0.
+        (*grid)(coords) = ids[ny*codx+cody];
+      }
+  }
+  else if(dim==3){
+    std::cerr<<"readin experimental initial grains only support 2D"<<std::endl;
+    exit(1);
+  }
+/*--------------------------------------------------*/
+MPI::COMM_WORLD.Barrier();
+  delete [] ids;
+  ids = NULL;
+
+	return timer;
+}
+
 int LargeNearestInteger(int a, int b){
   if(a%b==0) return a/b;
   else return a/b+1;
@@ -177,142 +266,8 @@ template <int dim> struct flip_index {
   int num_of_points_to_flip;
   int cell_coord[dim];
   int lattice_cells_each_dimension[dim];
-//  double* temperature_along_x; 
-//  EulerAngles* grain_orientations;
   double Pdenominator;
-//  double t_s;
 };
-
-double MaxOfThreeNumber(const double h, const double k, const double l){
-  double max_of_hkl = fabs(h)>fabs(k)?fabs(h):fabs(k);
-  max_of_hkl = fabs(l)>max_of_hkl?fabs(l):max_of_hkl;
-  return max_of_hkl;
-}
-
-double MediumOfThreeNumber(const double h, const double k, const double l){
-  double medium = (fabs(h)+fabs(k)+fabs(l))/3;
-  double medium_of_hkl = fabs(fabs(h)-medium)<fabs(fabs(k)-medium)?fabs(h):fabs(k);
-  medium_of_hkl = fabs(fabs(l)-medium)<fabs(medium_of_hkl-medium)?fabs(l):medium_of_hkl;
-  return medium_of_hkl;  
-}
-
-double MinOfThreeNumber(const double h, const double k, const double l){
-  double min_of_hkl = fabs(h)<fabs(k)?fabs(h):fabs(k);
-  min_of_hkl = fabs(l)<min_of_hkl?fabs(l):min_of_hkl;
-  return min_of_hkl;
-}
-
-double SurfaceEnergy(const double h, const double k, const double l, const double temperature){//copper (100)|ND thin film texture
-  // A.J.W Moore, Metal surfaces: structure, energetics and kinetic, charpter 5, thermal faceting, Page 166-169. American society for metals, Metals Park, Ohio, 1963. 
-  // surface energy changing rate rate w.r.t temperature is set to -5.0e-4 for all hkl planes (From D.P. Field's paper (2005))
-  double surface_energy = 0.0;
-  double cosine_one = MaxOfThreeNumber(h, k, l)/sqrt(h*h+k*k+l*l); //  {100} w.r.t ND
-  if(cosine_one>0.907){// choose {100} as the low index plane.  note in D.P. Field's paper (2005), only this low index plane is considered.
-    surface_energy = 2.8465/cosine_one + temperature*(-5.0e-4); //2.610-473.0*(-5.0e-4) = 2.8465
-  }else{
-    double cosine_two = (fabs(h)+fabs(k)+fabs(l))/sqrt(h*h+k*k+l*l)/sqrt(3.0); // {111} w.r.t ND
-    if(cosine_two>0.835){// choose {111} as the low index plane. 
-      surface_energy = 2.7085/cosine_two + temperature*(-5.0e-4); //2.472-473.0*(-5.0e-4) = 2.7085
-    }else{
-      double cosine_three = (MaxOfThreeNumber(h,k,l) + MediumOfThreeNumber(h,k,l))/sqrt(h*h+k*k+l*l)/sqrt(2.0);//{110} w.r.t ND
-      surface_energy = 3.0885/cosine_three + temperature*(-5.0e-4); //2.852-473.0*(-5.0e-4) = 3.0885
-    } 
-  }
-  return surface_energy;
-}
-
-void ReadTemperature(double* temperature_along_x, const int model_dimension){
-  std::ifstream ifs("temperature.txt", std::ios::in); // sample_temperature.txt is a sample temperature file. temperature is assumed to be a function (only) of x coordinate. 1 st column means x coordinate and 2nd column means temperature. The 1st row of the file (current time is XXXX) is the time record from heater transfer simulation.
-  std::vector<std::pair<double, double> > coords_and_temperatures;
-  double x_coordinate, temperature;
-  ifs.ignore(200, '\n');
-  while(ifs>>x_coordinate>>temperature){//start from the second line
-    coords_and_temperatures.push_back(std::make_pair(x_coordinate*(model_dimension-1), temperature));
-  }
-  ifs.close();
-/*  for(unsigned int i=0; i<coords_and_temperatures.size(); i++){
-    std::cout<<coords_and_temperatures[i].first<<"   "<<coords_and_temperatures[i].second<<std::endl;
-  }*/
-  int loop_temperatures_count=0;
-  unsigned int i_last_step=0;
-  unsigned int i=0;
-  while(loop_temperatures_count<model_dimension){
-    i=i_last_step;
-    while(i<coords_and_temperatures.size()){
-      if(i!=coords_and_temperatures.size()-1 && loop_temperatures_count>(coords_and_temperatures[i].first) && (coords_and_temperatures[i+1].first)>loop_temperatures_count){
-	        temperature_along_x[loop_temperatures_count]=coords_and_temperatures[i].second+(coords_and_temperatures[i+1].second-coords_and_temperatures[i].second)/(coords_and_temperatures[i+1].first-coords_and_temperatures[i].first)*((1.0*loop_temperatures_count)-coords_and_temperatures[i].first);
-        i_last_step = i;
-        i++;
-        break;
-      }else if((1.0*loop_temperatures_count)==coords_and_temperatures[i].first){
-	      temperature_along_x[loop_temperatures_count]=coords_and_temperatures[i].second;
-        i_last_step = i;
-        i++;
-        break;
-      }
-      i++;
-    }// while i
-    loop_temperatures_count++;
-  }
-/*
-  for(int i=0; i<loop_temperatures_count;i++){
-    std::cout<<"x="<<i<<"  temp="<<temperature_along_x[i]<<std::endl;
-  }  
-*/
-}
-
-double StrainEnergyDenstiy(const double h, const double k, const double l, const double temperature){
-  double c11=170.2e9+(temperature-298)*(-0.0353e9);//Pa^-1  N.J. Park, D.P. Field, Predicting thickness dependent twin boundary formation in sputtered Cu films, Scripta Materialia, 54.6, 2006, pp. 999-1003;
-  double c12=123.2e9+(temperature-298)*(-0.0153e9);//Pa^-1
-  double c44=75.4e9+(temperature-298)*(-0.0277e9);//Pa^-1
-  double K=(2*c44-c11+c12)*(h*h*k*k+k*k*l*l+l*l*h*h);
-  double M=c11+c12+K-2*(c12-K)*(c12-K)/(c11-2*K);
-  double deposite_temperature=298.0;
-  double elastic_strain=(3e-6-17e-6)*(temperature-deposite_temperature);
-  double strain_energy_density=elastic_strain*elastic_strain*M;
-  return strain_energy_density;
-}
-
-double CoherentTwinBoundaryEnergy(const double temperature){
-  double coherent_twin_boundary_energy = 0.498+(-1.0e-4)*(temperature-1223);
-  std::cout<<"CoherentTwinBoundaryEnergy fuction has been called"<<std::endl;
-  return coherent_twin_boundary_energy;
-}
-
-double IncoherentTwinBoundaryEnergy(const double temperature){
-  double incoherent_twin_boundary_energy = 0.024+(-2.0e-5)*(temperature-1073);
-//  std::cout<<"IncoherentTwinBoundaryEnergy fuction has been called"<<std::endl;
-  return incoherent_twin_boundary_energy;
-}
- 
-bool CheckSixtyDegreeRotation(const double h, const double k, const double l, const double hh, const double kk, const double ll){//hkl is the neighbour, hh kk ll is the site to be/after fliped
-  bool SixtyDegreeRotationAboutTriones = false;
-  double cosine_hkl_abc, cosine_hhkkll_abc, hn1, kn1, ln1, hn2, kn2, ln2, hkl_magnitude, hhkkll_magnitude, abc_magnitude, cosine_two_prjectors;
-  const double rotation_tolerance=1.0e-2;  // cos^-1(0.51)=59.34 deg   cos^-1(0.49)=60.66 deg
-  for(double a=-1.0; a<=1.0; a+=2.0){
-    for(double b=-1.0; b<=1.0; b+=2.0){
-      for(double c=-1.0; c<=1.0; c+=2.0){
-        abc_magnitude = sqrt(a*a+b*b+c*c);
-        hkl_magnitude = sqrt(h*h+k*k+l*l);
-        hhkkll_magnitude = sqrt(hh*hh+kk*kk+ll*ll);
-        cosine_hkl_abc = (h*a+k*b+l*c)/hkl_magnitude/abc_magnitude;
-        cosine_hhkkll_abc = (hh*a+kk*b+ll*c)/hhkkll_magnitude/abc_magnitude;
-        hn1 = h - hkl_magnitude*cosine_hkl_abc*a/abc_magnitude; // h, k, l preject to the equator plan as hn1 kn1 ln1
-        kn1 = k - hkl_magnitude*cosine_hkl_abc*b/abc_magnitude;
-        ln1 = l - hkl_magnitude*cosine_hkl_abc*c/abc_magnitude;
-        hn2 = hh - hhkkll_magnitude*cosine_hhkkll_abc*a/abc_magnitude; // hh, kk, ll preject to the equator plan as hn1 kn1 ln1
-        kn2 = kk - hhkkll_magnitude*cosine_hhkkll_abc*b/abc_magnitude;
-        ln2 = ll - hhkkll_magnitude*cosine_hhkkll_abc*c/abc_magnitude;
-        cosine_two_prjectors = (hn1*hn2+kn1*kn2+ln1*ln2)/sqrt(hn1*hn1+kn1*kn1+ln1*ln1)/sqrt(hn2*hn2+kn2*kn2+ln2*ln2);
-        if(fabs(cosine_two_prjectors-0.5)<rotation_tolerance){
-          SixtyDegreeRotationAboutTriones = true;
-          return SixtyDegreeRotationAboutTriones;
-        }
-      }
-    }
-  }
-  return SixtyDegreeRotationAboutTriones;
-}
 
 template <int dim> void* flip_index_helper_uniformly( void* s )
 {
@@ -399,7 +354,7 @@ template <int dim> void* flip_index_helper_uniformly( void* s )
     }else if(dim==3){
 		  for (int i=-1; i<=1; i++){
 			  for (int j=-1; j<=1; j++){
-			    for (int k=-1; k<=1; k++) {
+			    for (int k=-1; k<=1; k++){
             if(!(i==0 && j==0 && k==0)){
 				      r[0] = x[0] + i;
 				      r[1] = x[1] + j;
@@ -531,7 +486,7 @@ template <int dim> void* flip_index_helper( void* s )
 //    double initial_physical_time=1.0/K_/exp(-Q/R/temperature)*(pow(L_initial,n)-pow(L0,n));
 //    double t_mcs_initial = pow(L_initial/K1/lambda,1.0/n1);
     double t_mcs = (*(ss->grid)).AccessToTmc(x);
-    double Pnumerator = exp(-Q/R/temperature)/pow(t_mcs,(2*n1-1));
+    double Pnumerator = exp(-Q/R/temperature)/pow(t_mcs,(n*n1-1));
     double site_selection_probability = Pnumerator/ss->Pdenominator;
 //if(rank==0) std::cout<<"site_selection_probability is "<<site_selection_probability<<std::endl;
 	  double rd = double(rand())/double(RAND_MAX);
@@ -859,17 +814,6 @@ template <int dim> bool OutsideDomainCheck(MMSP::grid<dim, int>& grid, vector<in
   return outside_domain;
 }
 
-void ReadData(EulerAngles *grain_orientations){
-  EulerAngles euler_angles;
-  std::ifstream ifs("RandomNew.td", std::ios::in);  
-  int i=0;
-  while(ifs>>euler_angles.phi_one>>euler_angles.psi>>euler_angles.phi_two){
-    grain_orientations[i]=euler_angles; 
-    i++;
-  }
-  ifs.close();
-}
-
 template <int dim> unsigned long update_uniformly(MMSP::grid<dim, int>& grid, int steps, int nthreads)
 {
 	#if (!defined MPI_VERSION) && ((defined CCNI) || (defined BGQ))
@@ -1158,7 +1102,7 @@ template <int dim> double PdenominatorMax(MMSP::grid<dim, int>& grid, double& tm
            coords[1] = cody;
            coords[2] = codz;
            double temperature = grid.AccessToTmp(coords);
-           double Pdenominator = exp(-Q/R/temperature)/pow(grid.AccessToTmc(coords), (2*n1-1));
+           double Pdenominator = exp(-Q/R/temperature)/pow(grid.AccessToTmc(coords), (n*n1-1));
            if(Pdenominator > Pdenominator_max){
              Pdenominator_max = Pdenominator;
              tmc_at_PdenominatorMax = grid.AccessToTmc(coords);
@@ -1203,7 +1147,7 @@ template <int dim> void UpdateLocalTmp(MMSP::grid<dim, int>& grid, long double p
          for(int cody=x0(grid, 1); cody <= x1(grid, 1); cody++){
            coords[0] = codx;
            coords[1] = cody;
-           grid.AccessToTmp(coords) = temp[0]; 
+           grid.AccessToTmp(coords) = temp[1]+(temp[0]-temp[1])/256*codx;
          }
 /*-----------------------
 if(codx<=0.25*256)
@@ -1215,7 +1159,6 @@ else if(0.5*256<codx<=0.75*256)
 else if(0.75*256<codx<=256)
   grid.AccessToTmp(coords) = 700; 
 -----------------------*/
-//           grid.AccessToTmp(coords) = 473 + 273.0*sin(3.14/256*codx + 3.14/(1.0e5)*physical_time);
    }
    else if(dim==3){
      for(int codx=x0(grid, 0); codx <= x1(grid, 0); codx++)  
@@ -1456,7 +1399,7 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
     }
     MPI::COMM_WORLD.Allreduce(&tmc_at_PdenominatorMax, &tmc_at_PdenominatorMax_global, 1, MPI_DOUBLE, MPI_MAX);
     MPI::COMM_WORLD.Barrier();
-
+std::cout<<"tmc_at_PdenominatorMax_global is "<<tmc_at_PdenominatorMax_global<<std::endl;
 //    double t_inc = n*n1*pow(K1*lambda,n)/K_/Pdenominator_max_global;
 
     vector<int> coords (dim,0);
@@ -1464,9 +1407,11 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
     coords[1] = x0(grid, 1);
     coords[dim] = x0(grid, dim);
     double uniform_temperature = grid.AccessToTmp(coords);
-std::cout<<"uniform_temperature is "<<uniform_temperature<<std::endl;
+//std::cout<<"uniform_temperature is "<<uniform_temperature<<std::endl;
     double t_inc = ( pow(K1*lambda*pow(tmc_at_PdenominatorMax_global+1,n1), n) - 
                      pow(K1*lambda*pow(tmc_at_PdenominatorMax_global,n1), n) )/K_/exp(-Q/R/uniform_temperature);
+if(rank==0)
+std::cout<<"~~ "<<pow(K1*lambda*pow(tmc_at_PdenominatorMax_global+1,n1), n)<<"  ~~  "<<pow(K1*lambda*pow(tmc_at_PdenominatorMax_global,n1), n)<<std::endl;
 
 		unsigned long start = rdtsc();
     int num_of_sublattices=0;
@@ -1501,9 +1446,6 @@ std::cout<<"physical_time is "<<physical_time<<std::endl;
 	  MPI::COMM_WORLD.Barrier();
     UpdateLocalTmc(grid, t_inc);
 	  MPI::COMM_WORLD.Barrier();
-    double global_temperature = CheckTemperature(physical_time);
-    temp[0] = global_temperature;
-    temp[1] = global_temperature;
     UpdateLocalTmp(grid, physical_time, temp);
 	  MPI::COMM_WORLD.Barrier();
 
@@ -1545,26 +1487,6 @@ std::cout<<"physical_time is "<<physical_time<<std::endl;
 
 }
 
-
-double CheckTemperature(double physical_time){
-  double global_temperature = 0;
-double time_list[26] = {0,120,300,480,660,960,1080,1200,1260,1320,1380,1500,1620,1740,1860,2100,2280,2580,2700,2940,3060,3180,3300,3540,3660,4260};
-double temperature_list[26] = {387,409,486,544,596,670,686,703,712,720,725,727,729,730,732,725,723,725,727,729,729,730,657,574,540,483};
-
-  for(int i=0; i<26; i++){
-    if(physical_time>time_list[25]){
-     	std::cerr<<"simulation runs beyond experiment on time"<<std::endl;
-//	    exit(1);
-getchar();
-    }else{
-      for(int j=0; j<25; j++){
-        if(time_list[j]<physical_time & time_list[j+1]>physical_time)
-          global_temperature = temperature_list[j] + (temperature_list[j+1]-temperature_list[j])/(time_list[j+1]-time_list[j])*(physical_time-time_list[j]);
-      }
-    }
-  }
-  return global_temperature;
-}
 
 #ifndef SILENT
 void print_progress(const int step, const int steps, const int iterations)

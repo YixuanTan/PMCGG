@@ -13,7 +13,7 @@ BG_LIB = -L$(BG_PATH)/lib
 
 # compilers/flags
 compiler = g++ -O3 -Wall
-pcompiler = mpic++ -O3 -Wall
+pcompiler = mpic++ -O3 -std=c++0x -Wall
 flags = -I$(incdir) -I$(algodir) -I$(algodir)/topology
 
 # RPI CCI AMOS compilers/flags
@@ -54,7 +54,7 @@ wrongendian: wrongendian.cpp
 mmsp2vtk: TKmmsp2vti.cpp $(core)
 	$(compiler) $(flags) $< -o $@ -lz
 
-Pmmsp2vtk: mmsp2vtkP.cpp $(core)
+mmsp2vtkRecolor: mmsp2vtkRecolor.cpp $(core)
 	$(compiler) $(flags) $< -o $@ -lz
 
 mmsp2vtikeeporder: mmsp2vti_keeporder.cpp $(core)
