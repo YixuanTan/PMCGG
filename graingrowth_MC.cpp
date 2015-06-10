@@ -18,9 +18,9 @@
 #include"tessellate.hpp"
 #include"output.cpp"
 
-double lambda = 1.0e-3/256; //This is fixed from Monte Carlo simulation, so do not change it.  here 10^-3mm is the domain size, 10^-3mm = 1 um, so each pixel is 1 nm, all length unit should be with mm.
-double L_initial = 30*1.0e-3/256; // initially 30 nm diameter
-double L0 = 3*1.0e-3/256; 
+double lambda = 1.0e-3/1000; //This is fixed from Monte Carlo simulation, so do not change it.  here 10^-3mm is the domain size, 10^-3mm = 1 um, so each pixel is 1 nm, all length unit should be with mm.
+double L_initial = 30*1.0e-3/1000; // initially 30 nm diameter
+double L0 = 30*1.0e-3/1000; 
 double K1 = 0.94514608;
 double n1 = 0.48921977;
 double Q = 1.2552e5; //fitted from Mcbee, William C., and John A. McComb. "Grain growth in thin aluminum-4% copper alloy films." Thin Solid Films 30.1 (1975): 137-143.
@@ -45,9 +45,9 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
 
 	unsigned long timer=0;
 	if (dim == 2) {
-		const int edge = 256;
+		const int edge = 1000;
 		int number_of_fields(seeds);
-		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*1.5*1.5)); /* average grain is a disk of radius XXX
+		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*15*15)); /* average grain is a disk of radius XXX
 , XXX cannot be smaller than 0.1, or BGQ will abort.*/
 		#ifdef MPI_VERSION
 		while (number_of_fields % np) --number_of_fields; 
@@ -67,7 +67,7 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
 		MPI::COMM_WORLD.Barrier();
 		#endif
 	} else if (dim == 3) {
-		const int edge = 256;
+		const int edge = 1000;
 		int number_of_fields(seeds);
 		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge*edge)/(4./3*M_PI*10.*10.*10.)); // Average grain is a sphere of radius 10 voxels
 		#ifdef MPI_VERSION
@@ -124,6 +124,7 @@ unsigned long generate(int dim, char* filename, int seeds, int nthreads)
 	#endif
 
 	unsigned long timer = 0;
+
 	if (dim == 2) {
 		MMSP::grid<2,int>* grid2=NULL;
 		timer = generate<2>(grid2,seeds,nthreads);
@@ -151,6 +152,7 @@ unsigned long generate(int dim, char* filename, int seeds, int nthreads)
 		if (rank==0) std::cout<<"Wrote initial file to "<<filename<<"."<<std::endl;
 		#endif
 	}
+
 	return timer;
 }
 
@@ -166,20 +168,45 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, const char* filename)
 	#endif
 
 	unsigned long timer=0;
+/*------------------Initial tmc----------------------*/
+  double tmc_initial = pow(L_initial/K1/lambda,1.0/n1);
+  vector<int> coords (dim,0);
+/*---------------------------------------------------*/
+
 	if (dim == 2) {
-		const int edge = 256;
+		const int edge = 1000;
 		grid = new MMSP::grid<dim,int>(0, 0, edge, 0, edge);
 		(*grid).input(filename, 1, false);
 		#ifdef MPI_VERSION
 		MPI::COMM_WORLD.Barrier();
 		#endif
+/*------------------Initial tmc----------------------*/
+    for(int codx=x0(*grid, 0); codx <= x1(*grid, 0); codx++) 
+      for(int cody=x0(*grid, 1); cody <= x1(*grid, 1); cody++){
+        coords[0] = codx;
+        coords[1] = cody;
+        (*grid).AccessToTmc(coords) = tmc_initial;
+          (*grid).AccessToTmp(coords) = 1.0e6; //set the initial temp to be large enough such that initial physical time = 0.
+      }
+/*---------------------------------------------------*/
 	} else if (dim == 3) {
-		const int edge = 256;
+		const int edge = 1000;
 		grid = new MMSP::grid<dim,int>(0, 0, edge, 0, edge, 0, edge);
 		(*grid).input(filename, 1, false);
 		#ifdef MPI_VERSION
 		MPI::COMM_WORLD.Barrier();
 		#endif
+/*------------------Initial tmc----------------------*/
+    for(int codx=x0(*grid, 0); codx <= x1(*grid, 0); codx++) 
+      for(int cody=x0(*grid, 1); cody <= x1(*grid, 1); cody++) 
+        for(int codz=x0(*grid, 2); codz <= x1(*grid, 2); codz++){
+          coords[0] = codx;
+          coords[1] = cody;
+          coords[2] = codz;
+          (*grid).AccessToTmc(coords) = tmc_initial;
+          (*grid).AccessToTmp(coords) = 1.0e6;
+        }
+/*---------------------------------------------------*/
 	}
 	return timer;
 }
@@ -197,8 +224,8 @@ unsigned long growthexperiment(MMSP::grid<dim,int >*& grid, const char* filename
   int nx,ny,nz;
 	unsigned long timer=0;
 	if (dim == 2) {
-	  nx = 256;
-		ny = 256;
+	  nx = 1000;
+		ny = 1000;
 		grid = new MMSP::grid<dim,int>(0, 0, nx, 0, ny);
 		#ifdef MPI_VERSION
 		MPI::COMM_WORLD.Barrier();
@@ -841,7 +868,7 @@ template <int dim> unsigned long update_uniformly(MMSP::grid<dim, int>& grid, in
 	#endif
 
 /*
-  int edge = 256;
+  int edge = 1000;
   int number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*10.*10.)); // average grain is a disk of radius 10
   #ifdef MPI_VERSION
 	while (number_of_fields % np) --number_of_fields;
@@ -1147,16 +1174,20 @@ template <int dim> void UpdateLocalTmp(MMSP::grid<dim, int>& grid, long double p
          for(int cody=x0(grid, 1); cody <= x1(grid, 1); cody++){
            coords[0] = codx;
            coords[1] = cody;
-           grid.AccessToTmp(coords) = temp[1]+(temp[0]-temp[1])/256*codx;
+//           grid.AccessToTmp(coords) = temp[1]+(temp[0]-temp[1])/1000*codx;
+if(codx<=0.5*1000)
+  grid.AccessToTmp(coords) = temp[1]; 
+else
+  grid.AccessToTmp(coords) = temp[0]; 
          }
 /*-----------------------
-if(codx<=0.25*256)
-  grid.AccessToTmp(coords) = 100; 
-else if(0.25*256<codx<=0.5*256)
-  grid.AccessToTmp(coords) = 300; 
-else if(0.5*256<codx<=0.75*256)
-  grid.AccessToTmp(coords) = 256; 
-else if(0.75*256<codx<=256)
+if(codx<=0.5*1000)
+  grid.AccessToTmp(coords) = temp[1]; 
+else if(0.25*1000<codx<=0.5*1000)
+  grid.AccessToTmp(coords) = temp[0]; 
+else if(0.5*1000<codx<=0.75*1000)
+  grid.AccessToTmp(coords) = 1000; 
+else if(0.75*1000<codx<=1000)
   grid.AccessToTmp(coords) = 700; 
 -----------------------*/
    }
@@ -1167,7 +1198,7 @@ else if(0.75*256<codx<=256)
              coords[0] = codx;
              coords[1] = cody;
              coords[2] = codz;
-             grid.AccessToTmp(coords) = 473 + 273.0*sin(3.14/256*codx + 3.14/(1.0e5)*physical_time);
+             grid.AccessToTmp(coords) = 473 + 273.0*sin(3.14/1000*codx + 3.14/(1.0e5)*physical_time);
            }
    }
 }
@@ -1199,7 +1230,7 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 	#endif
 //	ghostswap(grid); 
 /*
-  int edge = 256;
+  int edge = 1000;
   int number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*10.*10.)); // average grain is a disk of radius 10
   #ifdef MPI_VERSION
 	while (number_of_fields % np) --number_of_fields;
@@ -1399,19 +1430,17 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
     }
     MPI::COMM_WORLD.Allreduce(&tmc_at_PdenominatorMax, &tmc_at_PdenominatorMax_global, 1, MPI_DOUBLE, MPI_MAX);
     MPI::COMM_WORLD.Barrier();
-std::cout<<"tmc_at_PdenominatorMax_global is "<<tmc_at_PdenominatorMax_global<<std::endl;
+
 //    double t_inc = n*n1*pow(K1*lambda,n)/K_/Pdenominator_max_global;
 
     vector<int> coords (dim,0);
     coords[0] = x0(grid, 0);
     coords[1] = x0(grid, 1);
     coords[dim] = x0(grid, dim);
-    double uniform_temperature = grid.AccessToTmp(coords);
-//std::cout<<"uniform_temperature is "<<uniform_temperature<<std::endl;
-    double t_inc = ( pow(K1*lambda*pow(tmc_at_PdenominatorMax_global+1,n1), n) - 
-                     pow(K1*lambda*pow(tmc_at_PdenominatorMax_global,n1), n) )/K_/exp(-Q/R/uniform_temperature);
-if(rank==0)
-std::cout<<"~~ "<<pow(K1*lambda*pow(tmc_at_PdenominatorMax_global+1,n1), n)<<"  ~~  "<<pow(K1*lambda*pow(tmc_at_PdenominatorMax_global,n1), n)<<std::endl;
+    double site_temperature = grid.AccessToTmp(coords);
+//std::cout<<"site_temperature is "<<site_temperature<<std::endl;
+    double t_inc = (pow(K1*lambda*pow(tmc_at_PdenominatorMax_global+1,n1), n) - 
+                     pow(K1*lambda*pow(tmc_at_PdenominatorMax_global,n1), n) )/K_/exp(-Q/R/site_temperature);
 
 		unsigned long start = rdtsc();
     int num_of_sublattices=0;
@@ -1442,6 +1471,7 @@ std::cout<<"~~ "<<pow(K1*lambda*pow(tmc_at_PdenominatorMax_global+1,n1), n)<<"  
 
 	  MPI::COMM_WORLD.Barrier();
     physical_time += t_inc;
+if(rank==0)
 std::cout<<"physical_time is "<<physical_time<<std::endl;
 	  MPI::COMM_WORLD.Barrier();
     UpdateLocalTmc(grid, t_inc);
