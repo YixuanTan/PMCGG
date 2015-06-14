@@ -18,14 +18,14 @@
 #include"tessellate.hpp"
 #include"output.cpp"
 
-double lambda = 1.0e-3/1000; //This is fixed from Monte Carlo simulation, so do not change it.  here 10^-3mm is the domain size, 10^-3mm = 1 um, so each pixel is 1 nm, all length unit should be with mm.
-double L_initial = 30*1.0e-3/1000; // initially 30 nm diameter
-double L0 = 30*1.0e-3/1000; 
-double K1 = 0.94514608;
-double n1 = 0.48921977;
+double lambda = 10.0/1000; //This is fixed from Monte Carlo simulation, so do not change it.  here 10 um is the domain size, so each pixel is 30 nm, all length unit should be with um.
+double L_initial = 3.0*10.0/1000; // initially 30 nm diameter
+double L0 = 3.0*10.0/1000;
+double K1 = 0.96806;
+double n1 = 0.5;
 double Q = 1.2552e5; //fitted from Mcbee, William C., and John A. McComb. "Grain growth in thin aluminum-4% copper alloy films." Thin Solid Films 30.1 (1975): 137-143.
-double n = 1/0.18; 
-double K_ = 5.3137e-17; // length in mm, time in second  fitted from Mcbee, William C., and John A. McComb. "Grain growth in thin aluminum-4% copper alloy films." Thin Solid Films 30.1 (1975): 137-143.
+double n = 1.0/0.18; 
+double K_ =  2.4670; // length in um, time in second  fitted from Mcbee, William C., and John A. McComb. "Grain growth in thin aluminum-4% copper alloy films." Thin Solid Films 30.1 (1975): 137-143.
 double R = 8.314;
 
 void print_progress(const int step, const int steps, const int iterations);
@@ -47,7 +47,7 @@ unsigned long generate(MMSP::grid<dim,int >*& grid, int seeds, int nthreads)
 	if (dim == 2) {
 		const int edge = 1000;
 		int number_of_fields(seeds);
-		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*15*15)); /* average grain is a disk of radius XXX
+		if (number_of_fields==0) number_of_fields = static_cast<int>(float(edge*edge)/(M_PI*1.5*1.5)); /* average grain is a disk of radius XXX
 , XXX cannot be smaller than 0.1, or BGQ will abort.*/
 		#ifdef MPI_VERSION
 		while (number_of_fields % np) --number_of_fields; 
@@ -507,15 +507,11 @@ template <int dim> void* flip_index_helper( void* s )
     }
 
     int rank = MPI::COMM_WORLD.Get_rank();
-//if(rank==0) std::cout<<"num_of_points_to_flip is "<<ss->num_of_points_to_flip<<std::endl;
-//getchar();
+
     double temperature=(*(ss->grid)).AccessToTmp(x);
-//    double initial_physical_time=1.0/K_/exp(-Q/R/temperature)*(pow(L_initial,n)-pow(L0,n));
-//    double t_mcs_initial = pow(L_initial/K1/lambda,1.0/n1);
     double t_mcs = (*(ss->grid)).AccessToTmc(x);
     double Pnumerator = exp(-Q/R/temperature)/pow(t_mcs,(n*n1-1));
     double site_selection_probability = Pnumerator/ss->Pdenominator;
-//if(rank==0) std::cout<<"site_selection_probability is "<<site_selection_probability<<std::endl;
 	  double rd = double(rand())/double(RAND_MAX);
     if(rd>site_selection_probability){
 //      hh--;// no need to guarantee that N times selection is performed in a configurational MC step, so hh is ony need to be the same as in uniform temp case for the highest temp site
@@ -1105,7 +1101,7 @@ template <int dim> unsigned long update_uniformly(MMSP::grid<dim, int>& grid, in
 	return total_update_time/np; // average update time
 }
 
-template <int dim> double PdenominatorMax(MMSP::grid<dim, int>& grid, double& tmc_at_PdenominatorMax){
+template <int dim> double PdenominatorMax(MMSP::grid<dim, int>& grid, double& tmc_at_PdenominatorMax, double& tmp_at_PdenominatorMax){
    double Pdenominator_max = 0.0;
    vector<int> coords (dim,0);
    if(dim==2){
@@ -1118,6 +1114,7 @@ template <int dim> double PdenominatorMax(MMSP::grid<dim, int>& grid, double& tm
            if(Pdenominator > Pdenominator_max){
              Pdenominator_max = Pdenominator;
              tmc_at_PdenominatorMax = grid.AccessToTmc(coords);
+             tmp_at_PdenominatorMax = grid.AccessToTmp(coords);
            }
          }
    }
@@ -1133,6 +1130,7 @@ template <int dim> double PdenominatorMax(MMSP::grid<dim, int>& grid, double& tm
            if(Pdenominator > Pdenominator_max){
              Pdenominator_max = Pdenominator;
              tmc_at_PdenominatorMax = grid.AccessToTmc(coords);
+             tmp_at_PdenominatorMax = grid.AccessToTmp(coords);
            }
         }
    }
@@ -1417,7 +1415,8 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 	for (int step=0; step<steps; step++){
 
     double tmc_at_PdenominatorMax = 0.0;
-    double Pdenominator_max_partition = PdenominatorMax(grid,tmc_at_PdenominatorMax); 
+    double tmp_at_PdenominatorMax = 0.0;
+    double Pdenominator_max_partition = PdenominatorMax(grid, tmc_at_PdenominatorMax, tmp_at_PdenominatorMax); 
     MPI::COMM_WORLD.Barrier();
     double Pdenominator_max_global = 0.0;
 
@@ -1425,22 +1424,23 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
     MPI::COMM_WORLD.Barrier();
 
     double tmc_at_PdenominatorMax_global = 0.0;
+    double tmp_at_PdenominatorMax_global = 0.0;
     if(Pdenominator_max_partition != Pdenominator_max_global){
       tmc_at_PdenominatorMax = 0.0;
+      tmp_at_PdenominatorMax = 0.0;
     }
     MPI::COMM_WORLD.Allreduce(&tmc_at_PdenominatorMax, &tmc_at_PdenominatorMax_global, 1, MPI_DOUBLE, MPI_MAX);
     MPI::COMM_WORLD.Barrier();
-
-//    double t_inc = n*n1*pow(K1*lambda,n)/K_/Pdenominator_max_global;
+    MPI::COMM_WORLD.Allreduce(&tmp_at_PdenominatorMax, &tmp_at_PdenominatorMax_global, 1, MPI_DOUBLE, MPI_MAX);
+    MPI::COMM_WORLD.Barrier();
 
     vector<int> coords (dim,0);
     coords[0] = x0(grid, 0);
     coords[1] = x0(grid, 1);
     coords[dim] = x0(grid, dim);
-    double site_temperature = grid.AccessToTmp(coords);
-//std::cout<<"site_temperature is "<<site_temperature<<std::endl;
+
     double t_inc = (pow(K1*lambda*pow(tmc_at_PdenominatorMax_global+1,n1), n) - 
-                     pow(K1*lambda*pow(tmc_at_PdenominatorMax_global,n1), n) )/K_/exp(-Q/R/site_temperature);
+                     pow(K1*lambda*pow(tmc_at_PdenominatorMax_global,n1), n) )/K_/exp(-Q/R/tmp_at_PdenominatorMax_global);
 
 		unsigned long start = rdtsc();
     int num_of_sublattices=0;
@@ -1472,7 +1472,7 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
 	  MPI::COMM_WORLD.Barrier();
     physical_time += t_inc;
 if(rank==0)
-std::cout<<"physical_time is "<<physical_time<<std::endl;
+std::cout<< "physical_time is "<<physical_time<<std::endl;
 	  MPI::COMM_WORLD.Barrier();
     UpdateLocalTmc(grid, t_inc);
 	  MPI::COMM_WORLD.Barrier();
