@@ -8,13 +8,13 @@
 #
 #SBATCH --mail-type=END
 #SBATCH --mail-user=tany3@rpi.edu
-#SBATCH -D /gpfs/u/home/MMPM/MMPMtany/scratch/nCompare/data
-#SBATCH --partition debug
-#SBATCH -t 60
-#SBATCH -N 16
+#SBATCH -D /gpfs/u/home/ACME/ACMEtany/scratch/HalfHalf/AlCuFilm/
+#SBATCH --partition small
+#SBATCH -t 120
+#SBATCH -N 32
 #SBATCH -n 1024
 #SBATCH --overcommit
-#SBATCH -o /gpfs/u/home/MMPM/MMPMtany/scratch/nCompare/prMC_16_1024.log
+#SBATCH -o /gpfs/u/home/ACME/ACMEtany/scratch/HalfHalf/AlCuFilm/Al_Cu.log
 
-srun --runjob-opts="--mapping TEDCBA" /gpfs/u/home/MMPM/MMPMtany/scratch/nCompare/q_MC.out --nonstop 2 voronmc.0000.dat 10000 5000 0 2 773 673
+srun --runjob-opts="--mapping TEDCBA" /gpfs/u/home/ACME/ACMEtany/barn/thinfilm/q_MC.out --nonstop 2 voronmc.0000.dat 1500 10 0 1 673 723
 

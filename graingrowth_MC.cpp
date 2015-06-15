@@ -18,14 +18,14 @@
 #include"tessellate.hpp"
 #include"output.cpp"
 
-double lambda = 10.0/1000; //This is fixed from Monte Carlo simulation, so do not change it.  here 10 um is the domain size, so each pixel is 30 nm, all length unit should be with um.
+double lambda = 10.0/1000; //This is fixed from Monte Carlo simulation, so do not change it.  here 10 um is the domain size, so each pixel is 10 nm, all length unit should be with um.
 double L_initial = 3.0*10.0/1000; // initially 30 nm diameter
 double L0 = 3.0*10.0/1000;
-double K1 = 0.96806;
-double n1 = 0.5;
+double K1 = 0.74171;
+double n1 = 0.43982;
 double Q = 1.2552e5; //fitted from Mcbee, William C., and John A. McComb. "Grain growth in thin aluminum-4% copper alloy films." Thin Solid Films 30.1 (1975): 137-143.
 double n = 1.0/0.18; 
-double K_ =  2.4670; // length in um, time in second  fitted from Mcbee, William C., and John A. McComb. "Grain growth in thin aluminum-4% copper alloy films." Thin Solid Films 30.1 (1975): 137-143.
+double K_ = 2.4670; // length in um, time in second fitted from Mcbee, William C., and John A. McComb. "Grain growth in thin aluminum-4% copper alloy films." Thin Solid Films 30.1 (1975): 137-143.
 double R = 8.314;
 
 void print_progress(const int step, const int steps, const int iterations);
@@ -124,6 +124,10 @@ unsigned long generate(int dim, char* filename, int seeds, int nthreads)
 	#endif
 
 	unsigned long timer = 0;
+/*------------------Initial tmc----------------------*/
+  double tmc_initial = pow(L_initial/K1/lambda,1.0/n1);
+  vector<int> coords (dim,0);
+/*---------------------------------------------------*/
 
 	if (dim == 2) {
 		MMSP::grid<2,int>* grid2=NULL;
@@ -137,6 +141,15 @@ unsigned long generate(int dim, char* filename, int seeds, int nthreads)
 		#ifndef SILENT
 		if (rank==0) std::cout<<"Wrote initial file to "<<filename<<"."<<std::endl;
 		#endif
+/*------------------Initial tmc----------------------*/
+    for(int codx=x0(*grid2, 0); codx <= x1(*grid2, 0); codx++) 
+      for(int cody=x0(*grid2, 1); cody <= x1(*grid2, 1); cody++){
+        coords[0] = codx;
+        coords[1] = cody;
+        (*grid2).AccessToTmc(coords) = tmc_initial;
+          (*grid2).AccessToTmp(coords) = 1.0e6; //set the initial temp to be large enough such that initial physical time = 0.
+      }
+/*---------------------------------------------------*/
 	}
 
 	if (dim == 3) {
@@ -151,6 +164,17 @@ unsigned long generate(int dim, char* filename, int seeds, int nthreads)
 		#ifndef SILENT
 		if (rank==0) std::cout<<"Wrote initial file to "<<filename<<"."<<std::endl;
 		#endif
+/*------------------Initial tmc----------------------*/
+    for(int codx=x0(*grid3, 0); codx <= x1(*grid3, 0); codx++) 
+      for(int cody=x0(*grid3, 1); cody <= x1(*grid3, 1); cody++) 
+        for(int codz=x0(*grid3, 2); codz <= x1(*grid3, 2); codz++){
+          coords[0] = codx;
+          coords[1] = cody;
+          coords[2] = codz;
+          (*grid3).AccessToTmc(coords) = tmc_initial;
+          (*grid3).AccessToTmp(coords) = 1.0e6;
+        }
+/*---------------------------------------------------*/
 	}
 
 	return timer;
@@ -1114,7 +1138,7 @@ template <int dim> double PdenominatorMax(MMSP::grid<dim, int>& grid, double& tm
            if(Pdenominator > Pdenominator_max){
              Pdenominator_max = Pdenominator;
              tmc_at_PdenominatorMax = grid.AccessToTmc(coords);
-             tmp_at_PdenominatorMax = grid.AccessToTmp(coords);
+             tmp_at_PdenominatorMax = temperature;
            }
          }
    }
@@ -1433,11 +1457,6 @@ template <int dim> unsigned long update(MMSP::grid<dim, int>& grid, int steps, i
     MPI::COMM_WORLD.Barrier();
     MPI::COMM_WORLD.Allreduce(&tmp_at_PdenominatorMax, &tmp_at_PdenominatorMax_global, 1, MPI_DOUBLE, MPI_MAX);
     MPI::COMM_WORLD.Barrier();
-
-    vector<int> coords (dim,0);
-    coords[0] = x0(grid, 0);
-    coords[1] = x0(grid, 1);
-    coords[dim] = x0(grid, dim);
 
     double t_inc = (pow(K1*lambda*pow(tmc_at_PdenominatorMax_global+1,n1), n) - 
                      pow(K1*lambda*pow(tmc_at_PdenominatorMax_global,n1), n) )/K_/exp(-Q/R/tmp_at_PdenominatorMax_global);
