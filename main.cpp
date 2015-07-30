@@ -38,8 +38,7 @@
 #endif
 #include"rdtsc.h"
 #include <string.h>
-#include <chrono>
-#include <ctime>
+
 
 template <typename T> int ilength(const T& i)
 {
@@ -296,7 +295,7 @@ int main(int argc, char* argv[]) {
 		double init_bw=0.0, comp_bw=0.0;
 		if (dim == 2) {
 			// tessellate
-			MMSP::grid<2,int>* grid=NULL;
+			MMSP::grid<2,unsigned long>* grid=NULL;
       if(argc == 10)
 			  init_cycles = MMSP::generate<2>(grid, 0, nthreads);
       else if(argc == 11){
@@ -349,11 +348,9 @@ allbwsum += allbw;
 			// perform computation
 			for (int i = iterations_start; i < steps; i += increment) {
 //auto t_start = std::chrono::high_resolution_clock::now();
-        if(increment_finished<step_to_nonuniform-1){
-				  comp_cycles = MMSP::update_uniformly(*grid, increment, nthreads);
-        }else{
-          comp_cycles = MMSP::update(*grid, increment, increment_finished, nthreads, step_to_nonuniform, physical_time, &temp[0]);
-        }
+
+        comp_cycles = MMSP::update(*grid, increment, increment_finished, nthreads, step_to_nonuniform, physical_time, &temp[0]);
+     
         increment_finished += increment;
 				unsigned long allcomp = 0;
 				#ifdef MPI_VERSION
@@ -413,7 +410,17 @@ allbwsum += allbw;
 		if (dim == 3) {
 			// tessellate
 			GRID3D* grid=NULL;
-			init_cycles = MMSP::generate<3>(grid, 0, nthreads);
+      if(argc == 10)
+			  init_cycles = MMSP::generate<3>(grid, 0, nthreads);
+      else if(argc == 11){
+        if(initfile.find(".txt") != std::string::npos){
+          MMSP::growthexperiment<3>(grid, initfile.c_str());
+        }else{
+          MMSP::generate<3>(grid, initfile.c_str());
+        }
+      }
+
+
 			#ifndef SILENT
 			if (rank==0) std::cout<<"Finished tessellation in "<<double(init_cycles)/clock_rate<<" sec."<<std::endl;
 			#else
@@ -451,7 +458,9 @@ allbwsum += allbw;
 
 			// perform computation
 			for (int i = iterations_start; i < steps; i += increment) {
-				comp_cycles = MMSP::update_uniformly(*grid, increment, nthreads);
+
+        comp_cycles = MMSP::update(*grid, increment, increment_finished, nthreads, step_to_nonuniform, physical_time, &temp[0]);
+        
         increment_finished += increment;
 				unsigned long allcomp = 0;
 				#ifdef MPI_VERSION
@@ -503,7 +512,6 @@ allbwsum += allbw;
 			}
 			if (grid!=NULL) delete grid; grid=NULL;
 		}
-
 	}
 
 
@@ -660,7 +668,7 @@ allbwsum += allbw;
 			// perform computation
 			for (int i = iterations_start; i < steps; i += increment) {
 
-				MMSP::update_uniformly(grid, increment, nthreads);
+//				MMSP::update_uniformly(grid, increment, nthreads);
         increment_finished += increment;
 
 				// generate output filename
@@ -694,7 +702,7 @@ allbwsum += allbw;
 
 			// perform computation
 			for (int i = iterations_start; i < steps; i += increment) {
-				MMSP::update_uniformly(grid, increment, nthreads);
+//				MMSP::update_uniformly(grid, increment, nthreads);
         increment_finished += increment;
 
 				// generate output filename

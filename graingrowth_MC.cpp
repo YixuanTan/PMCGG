@@ -744,7 +744,6 @@ template <int dim> unsigned long update_uniformly(MMSP::grid<dim, int>& grid, in
 
 	#ifndef SILENT
 	static int iterations = 1;
-	if (rank==0) print_progress(0, steps, iterations);
 	#endif
 
 /*-----------------------------------------------*/
@@ -936,9 +935,7 @@ template <int dim> unsigned long update_uniformly(MMSP::grid<dim, int>& grid, in
                 #endif
 
 		}//loop over color
-		#ifndef SILENT
-		if (rank==0) print_progress(step+1, steps, iterations);
-		#endif
+
 		update_timer += rdtsc()-start;
 	}//loop over step
 	#ifndef SILENT
@@ -1431,7 +1428,6 @@ template <int dim> unsigned long update(MMSP::grid<dim, unsigned long>& grid, in
 
 	#ifndef SILENT
 	static int iterations = 1;
-	if (rank==0) print_progress(0, steps, iterations);
 	#endif
 	ghostswap(grid); 
 /*
