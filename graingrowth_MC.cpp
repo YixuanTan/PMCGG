@@ -318,8 +318,10 @@ unsigned long growthexperiment(MMSP::grid<dim,unsigned long >*& grid, const char
 		MPI::COMM_WORLD.Barrier();
 		#endif
 	} else if (dim == 3) {
-		std::cerr << " Initial experiment grain structure input only available for 2D simulation" << std::endl;
-	  exit(-1);
+		grid = new MMSP::grid<dim,unsigned long>(0, 0, dim_x, 0, dim_y, 0, dim_z);
+		#ifdef MPI_VERSION
+		MPI::COMM_WORLD.Barrier();
+		#endif
 	}
 
 /*---------------read grain ID------------------*/
@@ -330,10 +332,10 @@ unsigned long growthexperiment(MMSP::grid<dim,unsigned long >*& grid, const char
 	  exit(-1);
   }
 
-  int* ids = new int[dim_x*dim_y];
-  int grainID;
-  int count = 0;
-  int fields = 1;
+  unsigned long* ids = new unsigned long[dim_x*dim_y];
+  unsigned long grainID;
+  unsigned long count = 0;
+  unsigned long fields = 1;
   while(idtxt>>grainID){
     ids[count] = grainID;
     ++count; 
@@ -344,7 +346,7 @@ unsigned long growthexperiment(MMSP::grid<dim,unsigned long >*& grid, const char
 /*----------------------------------------------*/
 
 /*------------------Initial tmc----------------------*/
-  double tmc_initial = pow((L_initial/lambda-1)/K1,1.0/n1);
+  double tmc_initial = 0.01;//pow((L_initial/lambda-1)/K1,1.0/n1);
   vector<int> coords (dim,0);
   if(dim==2){
     for(int codx=x0(*grid, 0); codx < x1(*grid, 0); codx++) 
@@ -357,14 +359,21 @@ unsigned long growthexperiment(MMSP::grid<dim,unsigned long >*& grid, const char
       }
   }
   else if(dim==3){
-    std::cerr<<"readin experimental initial grains only support 2D"<<std::endl;
-    exit(1);
+    for(int codx=x0(*grid, 0); codx < x1(*grid, 0); codx++) 
+      for(int cody=x0(*grid, 1); cody < x1(*grid, 1); cody++)
+        for(int codz=x0(*grid, 2); codz < x1(*grid, 2); codz++){
+          coords[0] = codx;
+          coords[1] = cody;
+          coords[2] = codz;
+          (*grid).AccessToTmc(coords) = tmc_initial;
+          (*grid).AccessToTmp(coords) = 1.0e6; //set the initial temp to be large enough such that initial physical time = 0.
+          (*grid)(coords) = ids[dim_y*dim_z*codx+dim_z*cody+codz];
+        }
   }
 /*--------------------------------------------------*/
 MPI::COMM_WORLD.Barrier();
   delete [] ids;
   ids = NULL;
-
 	return timer;
 }
 
