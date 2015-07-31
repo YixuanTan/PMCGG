@@ -137,7 +137,7 @@ int main(int argc, char* argv[])
 		std::cerr<<"POSIX thread error: "<<nthreads<<" threads is too few.\n"<< std::endl;
 		exit(-1);
 	}
-
+	
 	// write data type
 	output<<type<<'\n';
 
@@ -298,6 +298,12 @@ void* swap_block_kernel(void* x)
 					swap_buffer<int>(reinterpret_cast<int*>(q), 1);
 					q+=sizeof(int);
 				}
+			} else if(unsigned_long_type){
+				char* q=raw;
+				while (q<raw+size_in_mem) {
+					swap_buffer<unsigned long>(reinterpret_cast<unsigned long*>(q), 1);
+					q+=sizeof(unsigned long);
+				}
 			} else {
 				std::cerr<<"ERROR: Grid type ("<<type<<") is not implemented.\n"<<std::endl;
 				if (raw!=NULL) delete [] raw; raw=NULL;
@@ -372,6 +378,12 @@ void* swap_block_kernel(void* x)
 				while (q<raw+size_in_mem) {
 					swap_buffer<int>(reinterpret_cast<int*>(q), 1);
 					q+=sizeof(int);
+				}
+			} else if(unsigned_long_type){
+				char* q=raw;
+				while (q<raw+size_in_mem) {
+					swap_buffer<unsigned long>(reinterpret_cast<unsigned long*>(q), 1);
+					q+=sizeof(unsigned long);
 				}
 			} else {
 				std::cerr<<"ERROR: Grid type ("<<type<<") is not implemented.\n"<<std::endl;
