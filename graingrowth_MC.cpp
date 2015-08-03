@@ -57,9 +57,9 @@ double R = 8.314;
 
 
 // grid point dimension
-int dim_x = 5000; 
-int dim_y = 5000; 
-int dim_z = 700; 
+int dim_x = 10000; 
+int dim_y = 300; 
+int dim_z = 30; 
 
 namespace MMSP
 {
@@ -332,7 +332,11 @@ unsigned long growthexperiment(MMSP::grid<dim,unsigned long >*& grid, const char
 	  exit(-1);
   }
 
-  unsigned long* ids = new unsigned long[dim_x*dim_y];
+  int z_dim = dim_z;
+  if(dim==2) z_dim = 1;
+
+  unsigned long* ids = new unsigned long[dim_x*dim_y*z_dim];
+
   unsigned long grainID;
   unsigned long count = 0;
   unsigned long fields = 1;

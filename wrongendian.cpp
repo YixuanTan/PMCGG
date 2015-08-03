@@ -101,7 +101,7 @@ int main(int argc, char* argv[])
 	unsigned_char_type = (type.find("unsigned char") != std::string::npos);
 	int_type = (type.find("int") != std::string::npos);
 	unsigned_int_type = (type.find("unsigned int") != std::string::npos);
-	long_type = (type.find("long") != std::string::npos);
+  long_type = (type.find("long") != std::string::npos) && (type.find("unsigned long") == std::string::npos);
 	unsigned_long_type = (type.find("unsigned long") != std::string::npos);
 	short_type = (type.find("short") != std::string::npos);
 	unsigned_short_type = (type.find("unsigned short") != std::string::npos);
